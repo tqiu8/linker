@@ -42,15 +42,16 @@ namespace Mono.Linker
 
 		protected readonly LinkContext context;
 
-		Stack<object> dependency_stack;
+		Stack<object> dependency_stack = new Stack<object>();
 		System.Xml.XmlWriter writer;
 		Stream stream;
+
+		Dictionary<MethodDefinition, List<MethodDefinition>> methodCalls = new Dictionary<MethodDefinition, List<MethodDefinition>>();
 
 		public Tracer (LinkContext context) => this.context = context;
 
 		public void Start ()
 		{
-			dependency_stack = new Stack<object> ();
 			System.Xml.XmlWriterSettings settings = new System.Xml.XmlWriterSettings {
 				Indent = true,
 				IndentChars = "\t"
@@ -93,21 +94,21 @@ namespace Mono.Linker
 
 		public void Push (object o, bool addDependency = true)
 		{
+			dependency_stack.Push (o);
+
 			if (writer == null)
 				return;
 
 			if (addDependency && dependency_stack.Count > 0)
 				AddDependency (o);
-
-			dependency_stack.Push (o);
 		}
 
 		public void Pop ()
 		{
+			dependency_stack.Pop ();
+
 			if (writer == null)
 				return;
-
-			dependency_stack.Pop ();
 		}
 
 		static bool IsAssemblyBound (TypeDefinition td)
@@ -160,10 +161,25 @@ namespace Mono.Linker
 
 		public void AddDependency (object o, bool marked = false)
 		{
+			KeyValuePair<object, object> pair = new KeyValuePair<object, object> (dependency_stack.Count > 0 ? dependency_stack.Peek () : null, o);
+
+			if (pair.Key is MethodDefinition && pair.Value is MethodDefinition)
+			{
+				List<MethodDefinition> callees;
+				if (!methodCalls.TryGetValue(pair.Key as MethodDefinition, out callees))
+				{
+					callees = new List<MethodDefinition>();
+					methodCalls.Add(pair.Key as MethodDefinition, callees);
+				}
+
+				if (!callees.Contains(pair.Value as MethodDefinition))
+				{
+					callees.Add(pair.Value as MethodDefinition);
+				}
+			}
+
 			if (writer == null)
 				return;
-
-			KeyValuePair<object, object> pair = new KeyValuePair<object, object> (dependency_stack.Count > 0 ? dependency_stack.Peek () : null, o);
 
 			if (!ShouldRecord (pair.Key) && !ShouldRecord (pair.Value))
 				return;

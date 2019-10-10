@@ -405,6 +405,36 @@ namespace Mono.Linker {
 			if (LogMessages && Logger != null)
 				Logger.LogMessage (importance, message, values);
 		}
+
+		class MessageWithCallStack
+		{
+			public MethodDefinition Callee { get; set; }
+			public MessageImportance Importance { get; set; }
+			public string Message { get; set; }
+
+			public object[] Values { get; set; }
+		}
+
+		List<MessageWithCallStack> _messagesWithCallstack = new List<MessageWithCallStack>();
+
+		public void LogMessageWithCallstack (MethodDefinition callee, MessageImportance importance, string message, params object[] values)
+		{
+			_messagesWithCallstack.Add(new MessageWithCallStack()
+			{
+				Callee = callee,
+				Importance = importance,
+				Message = message,
+				Values = values
+			});
+		}
+
+		public void ReportCachedMessages()
+		{
+			foreach (MessageWithCallStack message in _messagesWithCallstack)
+			{
+				Logger.LogMessage(message.Importance, message.Callee.ToString() + " " + message.Message, message.Values);
+			}
+		}
 	}
 
 	[Flags]
