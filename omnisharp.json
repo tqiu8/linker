@@ -1,0 +1,5 @@
+{
+    "msbuild": {
+        "Configuration": "illink_Debug"
+    }
+}
