@@ -1,20 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup Condition=" $(Configuration.StartsWith('illink')) ">
+  <PropertyGroup>
     <AssemblyName>illink</AssemblyName>
     <Description>IL Linker</Description>
     <DefineConstants>$(DefineConstants);FEATURE_ILLINK</DefineConstants>
     <!-- net46 build is disabled until cecil uses SDK-style projects. -->
     <TargetFrameworks>netcoreapp2.0</TargetFrameworks>
     <TargetFrameworks Condition=" '$(MSBuildRuntimeType)' == 'Core' And '$(OS)' != 'Windows_NT' ">netcoreapp2.0</TargetFrameworks>
+    <Configurations>Debug;Release</Configurations>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" ! $(Configuration.StartsWith('illink')) ">
+  <!-- <PropertyGroup Condition=" ! $(Configuration.StartsWith('illink')) ">
     <AssemblyName>monolinker</AssemblyName>
     <AssemblyTitle>Mono.Linker</AssemblyTitle>
     <Description>Mono CIL Linker</Description>
     <TargetFrameworks>net471</TargetFrameworks>
-  </PropertyGroup>
+  </PropertyGroup> -->
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -41,10 +42,7 @@
   <!-- When publishing illink as a dependency of ILLink.Tasks, we want
        to include files needed to run it as an application in the
        publish output. See https://github.com/dotnet/sdk/issues/1675. -->
-  <Target Name="AddRuntimeDependenciesToContent"
-          BeforeTargets="GetCopyToOutputDirectoryItems"
-          DependsOnTargets="GenerateBuildDependencyFile;GenerateBuildRuntimeConfigurationFiles"
-          Condition=" '$(TargetFrameworkIdentifier)' == '.NETCoreApp'">
+  <Target Name="AddRuntimeDependenciesToContent" BeforeTargets="GetCopyToOutputDirectoryItems" DependsOnTargets="GenerateBuildDependencyFile;GenerateBuildRuntimeConfigurationFiles" Condition=" '$(TargetFrameworkIdentifier)' == '.NETCoreApp'">
     <ItemGroup>
       <ContentWithTargetPath Include="$(ProjectDepsFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectDepsFileName)" />
       <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName)" />

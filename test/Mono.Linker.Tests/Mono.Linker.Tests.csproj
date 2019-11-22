@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup Condition=" $(Configuration.StartsWith('illink')) ">
+  <PropertyGroup>
     <TargetFramework>netcoreapp3.0</TargetFramework>
     <ILLinkBuild>true</ILLinkBuild>
     <DefineConstants>$(DefineConstants);ILLINK</DefineConstants>
@@ -13,10 +13,10 @@
     <DisableArcadeTestFramework Condition=" '$(ArcadeBuild)' == 'true' ">true</DisableArcadeTestFramework>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" ! $(Configuration.StartsWith('illink')) ">
+  <!-- <PropertyGroup Condition=" ! $(Configuration.StartsWith('illink')) ">
     <TargetFramework>net471</TargetFramework>
     <ILLinkBuild>false</ILLinkBuild>
-  </PropertyGroup>
+  </PropertyGroup> -->
 
   <PropertyGroup>
     <IsTestProject>true</IsTestProject>

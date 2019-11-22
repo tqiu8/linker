@@ -180,7 +180,7 @@ namespace Mono.Linker.Tests.TestCases
 
 #if ILLINK
 #if DEBUG
-			var configDirectoryName = "illink_Debug";
+			var configDirectoryName = "Debug";
 #else
 			var configDirectoryName = "illink_Release";
 #endif
