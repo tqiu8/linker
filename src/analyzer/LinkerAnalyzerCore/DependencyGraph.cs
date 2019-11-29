@@ -85,14 +85,12 @@ namespace LinkerAnalyzer.Core
 
 		public VertexData Vertex (string vertexName, bool create = false)
 		{
-			VertexData vertex;
-
-			try {
-				vertex = vertices [indexes [vertexName]];
-			} catch (KeyNotFoundException) {
+			if (indexes.TryGetValue (vertexName, out int index)) {
+				return vertices [index];
+			} else {
 				if (create) {
-					int index = vertices.Count;
-					vertex = new VertexData () { value = vertexName, index = index };
+					index = vertices.Count;
+					VertexData vertex = new VertexData () { value = vertexName, index = index };
 					vertices.Add (vertex);
 					indexes.Add (vertexName, index);
 					string prefix = vertexName.Substring (0, vertexName.IndexOf (':'));
@@ -104,11 +102,12 @@ namespace LinkerAnalyzer.Core
 					if (prefix == "TypeDef") {
 						Types.Add (vertex);
 					}
-				} else
-					return null;
-			}
 
-			return vertex;
+					return vertex;
+				} else {
+					return null;
+				}
+			}
 		}
 
 		public VertexData Vertex (int index)

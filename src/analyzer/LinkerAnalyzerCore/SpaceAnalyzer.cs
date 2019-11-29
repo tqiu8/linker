@@ -27,19 +27,28 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 using Mono.Cecil;
 
 namespace LinkerAnalyzer.Core
 {
 	public class SpaceAnalyzer
 	{
-		string assembliesDirectory;
-		List<AssemblyDefinition> assemblies = new List<AssemblyDefinition> ();
-		readonly Dictionary<string, int> sizes = new Dictionary<string, int> ();
+		private readonly string assembliesDirectory;
+		private readonly List<AssemblyDefinition> assemblies = new List<AssemblyDefinition> ();
+		private readonly Dictionary<string, int> sizes = new Dictionary<string, int> ();
+		private string sizeJsonOutputFileName = null;
+		private Utf8JsonWriter sizeJsonWriter = null;
 
 		public SpaceAnalyzer (string assembliesDirectory)
 		{
 			this.assembliesDirectory = assembliesDirectory;
+		}
+
+		public void OutputSizeJson(string fileName)
+		{
+			sizeJsonOutputFileName = fileName;
 		}
 
 		static bool IsAssemblyBound (TypeDefinition td)
@@ -72,21 +81,43 @@ namespace LinkerAnalyzer.Core
 
 		int GetMethodSize (MethodDefinition method)
 		{
+			sizeJsonWriter?.Flush ();
+
+			sizeJsonWriter?.WriteStartObject ();
+			sizeJsonWriter?.WriteString ("type", "method");
+			sizeJsonWriter?.WriteString ("name", method.ToString ());
+			sizeJsonWriter?.WriteNull ("sections");
+
 			var key = GetKey (method);
 
-			if (sizes.ContainsKey (key))
-				return sizes [key];
+			int msize;
+			if (sizes.ContainsKey (key)) {
+				msize = sizes [key];
+			} else {
+				msize = method.Body.CodeSize;
+				msize += method.Name.Length;
 
-			var msize = method.Body.CodeSize;
-			msize += method.Name.Length;
+				sizes.Add (key, msize);
+			}
 
-			sizes.Add (key, msize);
+			sizeJsonWriter?.WriteNumber ("size", msize);
+			sizeJsonWriter?.WriteEndObject ();
+
+			sizeJsonWriter?.Flush ();
 
 			return msize;
 		}
 
 		int ProcessType (TypeDefinition type)
 		{
+			sizeJsonWriter?.WriteStartObject ();
+			sizeJsonWriter?.WriteString ("type", "class");
+			sizeJsonWriter?.WriteString ("name", type.ToString());
+			sizeJsonWriter?.WritePropertyName ("sections");
+			sizeJsonWriter?.WriteStartArray ();
+
+			sizeJsonWriter?.Flush ();
+
 			int size = type.Name.Length;
 
 			foreach (var field in type.Fields)
@@ -98,12 +129,16 @@ namespace LinkerAnalyzer.Core
 					size += GetMethodSize (method);
 			}
 
-			var resolvedType = type.Resolve ();
 			try {
 				sizes.Add (GetTypeKey (type), size);
 			} catch (ArgumentException e) {
 				Console.WriteLine ($"\nWarning: duplicated type '{type}' scope '{type.Scope}'\n{e}");
 			}
+
+			sizeJsonWriter?.WriteEndArray ();
+			sizeJsonWriter?.WriteNumber ("size", size);
+			sizeJsonWriter?.WriteEndObject ();
+
 			return size;
 		}
 
@@ -118,29 +153,54 @@ namespace LinkerAnalyzer.Core
 			var resolver = new DefaultAssemblyResolver ();
 			resolver.AddSearchDirectory (assembliesDirectory);
 
-			int totalSize = 0;
-			foreach (var file in System.IO.Directory.GetFiles (assembliesDirectory, "*.dll")) {
-				if (verbose)
-					Console.WriteLine ($"Analyzing {file}");
-				else
-					Console.Write (".");
-
-				ReaderParameters parameters = new ReaderParameters () { ReadingMode = ReadingMode.Immediate, AssemblyResolver = resolver};
-				var assembly = AssemblyDefinition.ReadAssembly (file, parameters);
-				assemblies.Add (assembly);
-				foreach (var module in assembly.Modules) {
-					foreach (var type in module.Types) {
-						totalSize += ProcessType (type);
-						foreach (var child in type.NestedTypes)
-							totalSize += ProcessType (child);
-					}
-				}
+			sizeJsonWriter = null;
+			if (sizeJsonOutputFileName != null) {
+				sizeJsonWriter = new Utf8JsonWriter (new FileStream(sizeJsonOutputFileName, FileMode.Create, FileAccess.Write, FileShare.Read));
 			}
 
-			if (verbose)
-				Console.WriteLine ("Total known size: {0}", totalSize);
-			else
-				System.Console.WriteLine ();
+			using (sizeJsonWriter) {
+				sizeJsonWriter?.WriteStartArray ();
+
+				int totalSize = 0;
+				foreach (var file in System.IO.Directory.GetFiles (assembliesDirectory, "*.dll")) {
+					if (verbose)
+						Console.WriteLine ($"Analyzing {file}");
+					else
+						Console.Write (".");
+
+					ReaderParameters parameters = new ReaderParameters () { ReadingMode = ReadingMode.Immediate, AssemblyResolver = resolver };
+					var assembly = AssemblyDefinition.ReadAssembly (file, parameters);
+					assemblies.Add (assembly);
+
+					sizeJsonWriter?.WriteStartObject ();
+					sizeJsonWriter?.WriteString ("type", "assembly");
+					sizeJsonWriter?.WriteString ("name", assembly.Name.Name);
+
+					sizeJsonWriter?.WritePropertyName ("sections");
+					sizeJsonWriter?.WriteStartArray ();
+					int assemblySize = 0;
+					foreach (var module in assembly.Modules) {
+						foreach (var type in module.Types) {
+							assemblySize += ProcessType (type);
+							foreach (var child in type.NestedTypes)
+								assemblySize += ProcessType (child);
+						}
+					}
+
+					sizeJsonWriter?.WriteEndArray ();
+
+					sizeJsonWriter?.WriteNumber ("size", assemblySize);
+					sizeJsonWriter?.WriteEndObject ();
+					totalSize += assemblySize;
+				}
+
+				if (verbose)
+					Console.WriteLine ("Total known size: {0}", totalSize);
+				else
+					Console.WriteLine ();
+
+				sizeJsonWriter?.WriteEndArray ();
+			}
 		}
 
 		public int GetSize (VertexData vertex)

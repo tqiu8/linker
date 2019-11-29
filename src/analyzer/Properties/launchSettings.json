@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "analyzer": {
+      "commandName": "Project",
+      "commandLineArgs": "-l F:\\AppModel\\linker\\t\\out2\\ --json F:\\AppModel\\linker\\t\\out2\\sizes.json F:\\AppModel\\linker\\t\\out2\\linker-dependencies.xml.gz"
+    }
+  }
+}

@@ -29,6 +29,7 @@ namespace LinkerAnalyzer
 			bool verbose = false;
 			bool flatDeps = false;
 			string linkedPath = null;
+			string sizeJsonFileName = null;
 
 			var optionsParser = new OptionSet () {
 				{ "a|alldeps", "show all dependencies", v => { showAllDeps = v != null; } },
@@ -41,6 +42,7 @@ namespace LinkerAnalyzer
 				{ "types", "show all types dependencies.", v => showTypes = v != null },
 				{ "t|typedeps=", "show type dependencies. The VALUE can be regular expression", v => { showTypeDeps = v != null; typeName = v; } },
 				{ "f|flat", "show all dependencies per vertex and their distance", v => flatDeps = v != null },
+				{ "json=", "write sizes to the specified json file. Works only if linkedpath is also specified.", v => { sizeJsonFileName = v; } },
 				{ "v|verbose", "be more verbose. Enables stat and roots options.", v => verbose = v != null },
 			};
 
@@ -63,6 +65,11 @@ namespace LinkerAnalyzer
 
 			if (linkedPath != null) {
 				deps.SpaceAnalyzer = new SpaceAnalyzer (linkedPath);
+
+				if (sizeJsonFileName != null) {
+					deps.SpaceAnalyzer.OutputSizeJson (sizeJsonFileName);
+				}
+
 				deps.SpaceAnalyzer.LoadAssemblies (verbose);
 			}
 
