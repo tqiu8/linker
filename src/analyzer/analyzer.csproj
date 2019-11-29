@@ -10,8 +10,8 @@
   <PropertyGroup Condition="$(Configuration.StartsWith('illink'))">
     <DefineConstants>$(DefineConstants);FEATURE_ILLINK</DefineConstants>
     <!-- net46 build is disabled until cecil uses SDK-style projects. -->
-    <TargetFrameworks>netcoreapp2.0</TargetFrameworks>
-    <TargetFrameworks Condition="'$(MSBuildRuntimeType)' == 'Core' And '$(OS)' != 'Windows_NT'">netcoreapp2.0</TargetFrameworks>
+    <TargetFrameworks>netcoreapp3.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(MSBuildRuntimeType)' == 'Core' And '$(OS)' != 'Windows_NT'">netcoreapp3.0</TargetFrameworks>
   </PropertyGroup>
 
   <PropertyGroup Condition="!$(Configuration.StartsWith('illink'))">
@@ -34,12 +34,6 @@
       <Project>{D68133BD-1E63-496E-9EDE-4FBDBF77B486}</Project>
       <Name>Mono.Cecil</Name>
     </ProjectReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="common\Mono.Options\Options.cs">
-      <Link>Options.cs</Link>
-    </Compile>
   </ItemGroup>
 
 </Project>
