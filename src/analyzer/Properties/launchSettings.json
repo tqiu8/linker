@@ -2,7 +2,7 @@
   "profiles": {
     "analyzer": {
       "commandName": "Project",
-      "commandLineArgs": "-l F:\\AppModel\\linker\\t\\out2\\ --json F:\\AppModel\\linker\\t\\out2\\sizes.json F:\\AppModel\\linker\\t\\out2\\linker-dependencies.xml.gz"
+      "commandLineArgs": "-l E:\\AppModel\\linker\\t\\out2 --json E:\\AppModel\\linker\\t\\out2\\out.sizes.json \"E:\\AppModel\\linker\\t\\out2\\linker-dependencies.xml.gz\""
     }
   }
 }

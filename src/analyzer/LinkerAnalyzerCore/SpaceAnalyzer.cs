@@ -86,7 +86,7 @@ namespace LinkerAnalyzer.Core
 			sizeJsonWriter?.WriteStartObject ();
 			sizeJsonWriter?.WriteString ("type", "method");
 			sizeJsonWriter?.WriteString ("name", method.ToString ());
-			sizeJsonWriter?.WriteNull ("sections");
+			sizeJsonWriter?.WriteNull ("children");
 
 			var key = GetKey (method);
 
@@ -113,7 +113,7 @@ namespace LinkerAnalyzer.Core
 			sizeJsonWriter?.WriteStartObject ();
 			sizeJsonWriter?.WriteString ("type", "class");
 			sizeJsonWriter?.WriteString ("name", type.ToString());
-			sizeJsonWriter?.WritePropertyName ("sections");
+			sizeJsonWriter?.WritePropertyName ("children");
 			sizeJsonWriter?.WriteStartArray ();
 
 			sizeJsonWriter?.Flush ();
@@ -176,7 +176,7 @@ namespace LinkerAnalyzer.Core
 					sizeJsonWriter?.WriteString ("type", "assembly");
 					sizeJsonWriter?.WriteString ("name", assembly.Name.Name);
 
-					sizeJsonWriter?.WritePropertyName ("sections");
+					sizeJsonWriter?.WritePropertyName ("children");
 					sizeJsonWriter?.WriteStartArray ();
 					int assemblySize = 0;
 					foreach (var module in assembly.Modules) {
