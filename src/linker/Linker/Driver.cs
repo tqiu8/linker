@@ -161,6 +161,7 @@ namespace Mono.Linker {
 				bool dumpDependencies = false;
 				bool ignoreDescriptors = false;
 				bool removeCAS = true;
+				bool analyzeForTrim = false;
 
 				bool resolver = false;
 				while (HaveMoreTokens ()) {
@@ -269,6 +270,10 @@ namespace Mono.Linker {
 
 						case "--output-assemblylist":
 							context.AssemblyListFile = GetParam ();
+							continue;
+
+						case "--analyze-for-trim":
+							analyzeForTrim = true;
 							continue;
 						}
 
@@ -436,6 +441,12 @@ namespace Mono.Linker {
 
 				if (context.IsOptimizationEnabled (CodeOptimizations.ClearInitLocals))
 					p.AddStepBefore (typeof (OutputStep), new ClearInitLocalsStep ());
+
+				if (analyzeForTrim) {
+					AnalysisEntryPointsStep analysisEntryPointsStep = new AnalysisEntryPointsStep ();
+					p.AddStepBefore (typeof (LoadReferencesStep), analysisEntryPointsStep);
+					p.AddStepBefore (typeof (OutputStep), new AnalysisStep (context, analysisEntryPointsStep));
+				}
 
 				PreProcessPipeline (p);
 
@@ -625,6 +636,7 @@ namespace Mono.Linker {
 			Console.WriteLine ("  --dependencies-file <path> Specify the dependencies output. Defaults to 'output/linker-dependencies.xml.gz'");
 			Console.WriteLine ("  --dump-dependencies        Dump dependencies for the linker analyzer tool");
 			Console.WriteLine ("  --reduced-tracing          Reduces dependency output related to assemblies that will not be modified");
+			Console.WriteLine ("  --analyze-for-trim         Analyzes if the program has any issues when trimmed");
 			Console.WriteLine ("");
 
 			Environment.Exit (1);

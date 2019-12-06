@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Mono.Linker": {
+      "commandName": "Project",
+      "commandLineArgs": "@F:\\AppModel\\linker\\TrimConsole\\linker.rsp",
+      "workingDirectory": "F:\\AppModel\\linker\\TrimConsole"
+    }
+  }
+}
