@@ -46,8 +46,6 @@ namespace Mono.Linker.Analysis {
 
         bool usingStringInput = true;
 
-        HashSet<(MethodDefinition caller, MethodDefinition callee)> edges;
-
         public Formatter(CallGraph callGraph,
                          IntMapping<MethodDefinition> mapping,
                          bool json = false,
@@ -84,36 +82,6 @@ namespace Mono.Linker.Analysis {
             sb.Append(m.ReturnType);
             return sb.ToString();
         }
-
-        public void PrintInterestingMethods() {
-            var methods = new HashSet<MethodDefinition>();
-            foreach (var e in edges) {
-                if (apiFilter.IsInterestingMethod(e.callee)) {
-                    methods.Add(e.callee);
-                }
-            }
-            var methodList = methods.Select(m => FormatMethod(m)).ToList();
-            methodList.Sort();
-            foreach (var m in methodList) {
-                textWriter.WriteLine(m);
-            }
-        }
-
-        public void PrintInterestingCalls() {
-            textWriter.WriteLine("printing interesting calls...");
-            foreach (var e in edges) {
-                if (apiFilter.IsInterestingMethod(e.callee)) {
-                    PrintEdge(e);
-                }
-            }
-        }
-
-        public void Print() {
-            foreach (var e in edges) {
-                PrintEdge(e);
-            }
-        }
-
 
         public void PrintEdge((MethodDefinition caller, MethodDefinition callee) e) {
             textWriter.WriteLine(Formatter.FormatMethod(e.caller));

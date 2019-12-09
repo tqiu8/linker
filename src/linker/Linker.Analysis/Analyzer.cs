@@ -21,7 +21,6 @@ namespace Mono.Linker.Analysis
         Formatter formatter;
 
         bool[] isVirtualMethod;
-        bool[] isInterestingMethod;
         bool[] isAnnotatedSafeMethod;
         InterestingReason[] interestingReasons;
         int numInterestingMethods;
@@ -163,6 +162,7 @@ namespace Mono.Linker.Analysis
 
             interestingReasons = new InterestingReason[intCallGraph.numMethods];
             isVirtualMethod = new bool[callGraph.Methods.Count];
+			isAnnotatedSafeMethod = new bool [callGraph.Methods.Count];
             var isPublicOrVirtual = new bool[callGraph.Methods.Count];
             for (int i = 0; i < intCallGraph.numMethods; i++) {
                 var cecilMethod = mapping.intToMethod[i];
@@ -429,7 +429,7 @@ namespace Mono.Linker.Analysis
 			var ordered = hitTypesPerNS.OrderByDescending (e => e.Value.Count);
 
 			HashSet<TypeDefinition> allTypes = callGraph.Methods.Select (m => m.DeclaringType).ToHashSet ();
-			HashSet<string> allNamespaces = allTypes.Select (t => t.Namespace).Where (ns => !string.IsNullOrEmpty(ns)).ToHashSet ();
+			HashSet<string> allNamespaces = allTypes.Select (t => t.Namespace).Where(ns => !string.IsNullOrEmpty(ns)).ToHashSet ();
 
 			var totalTypesPerNS = new Dictionary<string, int> ();
 			foreach (var t in allTypes) {
