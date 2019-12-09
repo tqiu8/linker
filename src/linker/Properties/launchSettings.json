@@ -2,8 +2,7 @@
   "profiles": {
     "Mono.Linker": {
       "commandName": "Project",
-      "commandLineArgs": "@F:\\AppModel\\linker\\TrimConsole\\linker.rsp",
-      "workingDirectory": "F:\\AppModel\\linker\\TrimConsole"
+      "commandLineArgs": "@E:\\dotnet\\vitkaras\\environments\\vitkaras1_data\\linker-analysis-consoleapp.rsp"
     }
   }
 }

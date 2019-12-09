@@ -48,7 +48,8 @@ namespace Mono.Linker.Analysis
         public Analyzer(CallGraph callGraph,
                         IntCallGraph intCallGraph,
                         IntMapping<MethodDefinition> mapping,
-                        ApiFilter apiFilter, Formatter formatter = null) {
+                        ApiFilter apiFilter,
+						Formatter formatter = null) {
             this.callGraph = callGraph;
             this.mapping = mapping;
             this.intCallGraph = intCallGraph;
@@ -425,36 +426,39 @@ namespace Mono.Linker.Analysis
         }
 
         public void ReportTypeCounts() {
-			//var ordered = hitTypesPerNS.OrderByDescending (e => e.Value.Count);
+			var ordered = hitTypesPerNS.OrderByDescending (e => e.Value.Count);
 
-			//var totalTypesPerNS = new Dictionary<string, int> ();
-			//foreach (var t in CecilAdapter.allTypes) {
-			//	var type = t;
-			//	while (type.DeclaringType != null) {
-			//		type = type.DeclaringType;
-			//	}
-			//	var ns = type.Namespace;
-			//	if (!String.IsNullOrEmpty (ns)) {
-			//		if (!totalTypesPerNS.ContainsKey (ns)) {
-			//			totalTypesPerNS [ns] = 1;
-			//		} else {
-			//			totalTypesPerNS [ns]++;
-			//		}
-			//	}
-			//}
+			HashSet<TypeDefinition> allTypes = callGraph.Methods.Select (m => m.DeclaringType).ToHashSet ();
+			HashSet<string> allNamespaces = allTypes.Select (t => t.Namespace).Where (ns => !string.IsNullOrEmpty(ns)).ToHashSet ();
 
-			//// output the actual data
-			//foreach (var e in ordered) {
-			//	var ns = e.Key;
-			//	var types = e.Value;
-			//	Console.WriteLine (ns + ": " + types.Count + " / " + totalTypesPerNS [ns]);
-			//}
+			var totalTypesPerNS = new Dictionary<string, int> ();
+			foreach (var t in allTypes) {
+				var type = t;
+				while (type.DeclaringType != null) {
+					type = type.DeclaringType;
+				}
+				var ns = type.Namespace;
+				if (!String.IsNullOrEmpty (ns)) {
+					if (!totalTypesPerNS.ContainsKey (ns)) {
+						totalTypesPerNS [ns] = 1;
+					} else {
+						totalTypesPerNS [ns]++;
+					}
+				}
+			}
 
-			//// output namespaces with zero hits
-			//var zeroNamespaces = CecilAdapter.namespaces.Where (ns => !hitTypesPerNS.ContainsKey (ns)).OrderBy (ns => ns);
-			//foreach (var ns in zeroNamespaces) {
-			//	Console.WriteLine (ns + ": 0 / " + totalTypesPerNS [ns]);
-			//}
+			// output the actual data
+			foreach (var e in ordered) {
+				var ns = e.Key;
+				var types = e.Value;
+				Console.WriteLine (ns + ": " + types.Count + " / " + totalTypesPerNS [ns]);
+			}
+
+			// output namespaces with zero hits
+			var zeroNamespaces = allNamespaces.Where (ns => !hitTypesPerNS.ContainsKey (ns)).OrderBy (ns => ns);
+			foreach (var ns in zeroNamespaces) {
+				Console.WriteLine (ns + ": 0 / " + totalTypesPerNS [ns]);
+			}
 		}
 
 
