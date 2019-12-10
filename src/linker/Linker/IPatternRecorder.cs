@@ -37,7 +37,7 @@ namespace Mono.Linker
 
 		void RecognizedReflectionFieldAccessPattern (MethodDefinition sourceMethod, MethodDefinition reflectionMethod, FieldDefinition accessedField);
 
-		void RecognizedReflectionEventAccessPattern (MethodDefinition sourceMethod, MethodDefinition reflectionMethod, EventDefinition accessedField);
+		void RecognizedReflectionEventAccessPattern (MethodDefinition sourceMethod, MethodDefinition reflectionMethod, EventDefinition accessedEvent);
 
 		void UnrecognizedReflectionCallPattern (MethodDefinition sourceMethod, MethodDefinition reflectionMethod, string message);
 	}

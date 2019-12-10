@@ -176,15 +176,15 @@ namespace Mono.Linker.Analysis
 		}
 
 
-		readonly List<string> unanalyzedMethods;
-		HashSet<MethodDefinition> entryMethods;
+		private readonly List<MethodDefinition> unanalyzedMethods;
+		private readonly HashSet<MethodDefinition> entryMethods;
 
 		public ApiFilter ()
 		{
 			// don't use any predetermined unanalyzed methods (from the linker)
 		}
 
-		public ApiFilter (List<string> unanalyzedMethods, HashSet<MethodDefinition> entryMethods)
+		public ApiFilter (List<MethodDefinition> unanalyzedMethods, HashSet<MethodDefinition> entryMethods)
 		{
 			this.unanalyzedMethods = unanalyzedMethods;
 			this.entryMethods = entryMethods;
@@ -209,7 +209,8 @@ namespace Mono.Linker.Analysis
 			if (unanalyzedMethods == null) {
 				return false;
 			}
-			return unanalyzedMethods.Contains (method.FullName);
+
+			return unanalyzedMethods.Contains (method);
 		}
 
 		public bool IsAnnotatedLinkerFriendlyApi (MethodDefinition method)

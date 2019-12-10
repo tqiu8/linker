@@ -36,7 +36,7 @@ namespace Mono.Linker
 			_context = context;
 		}
 
-		public void RecognizedReflectionEventAccessPattern (MethodDefinition sourceMethod, MethodDefinition reflectionMethod, EventDefinition accessedField)
+		public void RecognizedReflectionEventAccessPattern (MethodDefinition sourceMethod, MethodDefinition reflectionMethod, EventDefinition accessedEvent)
 		{
 			// Do nothing - there's no logging for successfully recognized patterns
 		}
