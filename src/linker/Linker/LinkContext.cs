@@ -151,6 +151,8 @@ namespace Mono.Linker {
 
 		public Tracer Tracer { get; private set; }
 
+		public IPatternRecorder PatternRecorder { get; set; }
+
 		public string[] ExcludedFeatures { get; set; }
 
 		public CodeOptimizations DisabledOptimizations { get; set; }
@@ -189,6 +191,7 @@ namespace Mono.Linker {
 			_annotations = factory.CreateAnnotationStore (this);
 			MarkingHelpers = factory.CreateMarkingHelpers (this);
 			Tracer = factory.CreateTracer (this);
+			PatternRecorder = new LoggingPatternRecorder (this);
 			MarkedKnownMembers = new KnownMembers ();
 			StripResources = true;
 
