@@ -31,10 +31,9 @@ namespace Mono.Linker.Steps
 			string jsonFile = Path.Combine (context.OutputDirectory, "trimanalysis.json");
 			using (StreamWriter sw = new StreamWriter (jsonFile)) {
 				(IntCallGraph intCallGraph, IntMapping<MethodDefinition> mapping) = IntCallGraph.CreateFrom (cg);
-				using (var formatter = new Formatter (cg, mapping, json: true, sw)) {
-					var analyzer = new Analyzer (cg, intCallGraph, mapping, apiFilter, formatter: formatter);
-					analyzer.Analyze ();
-				}
+				var formatter = new Formatter (cg, mapping, json: true, sw);
+				var analyzer = new Analyzer (cg, intCallGraph, mapping, apiFilter, formatter: formatter, Grouping.Callee);
+				analyzer.Analyze ();
 			}
 		}
 	}
