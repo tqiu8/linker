@@ -8,7 +8,7 @@ To give it a try:
 
 ## Clone and build
 ```
-> git clone https://github.com/vitek-karas/linker -b Analysis
+> git clone --recursive https://github.com/vitek-karas/linker -b Analysis
 > cd linker
 linker> ./eng/dotnet.{sh/ps1} build illink.sln
 ```
