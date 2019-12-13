@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 namespace Mono.Linker.Analysis
 {
@@ -23,6 +24,7 @@ namespace Mono.Linker.Analysis
 									   bool excludePathsToSources = false,
 									   bool [] ignoreEdgesTo = null,
 									   bool [] ignoreEdgesFrom = null,
+									   int [][] ignoreEdges = null,
 									   Action<IntBFSResult> resultAction = null)
 		{
 
@@ -38,6 +40,7 @@ namespace Mono.Linker.Analysis
 							isSource: isSource, // used to exclude paths that go through a different source
 							ignoreEdgesTo: ignoreEdgesTo,
 							ignoreEdgesFrom: ignoreEdgesFrom,
+							ignoreEdges: ignoreEdges,
 							returnMultiple: true);
 				resultAction (r);
 			}
@@ -56,11 +59,15 @@ namespace Mono.Linker.Analysis
 		// find shortest path from source to the first interesting method
 		// continuesearchingfrom is assumed to be a subset of isDestination.
 		// that is, nonzeros that are not destinations are ignored.
-		public static IntBFSResult BFS (int source, int [] [] neighbors, bool [] isDestination,
-									   bool [] isSource = null,
-									   bool [] ignoreEdgesTo = null, bool [] ignoreEdgesFrom = null,
-									   bool returnMultiple = false,
-									   bool includeEdgesFromSource = false)
+		public static IntBFSResult BFS (int source,
+									    int [] [] neighbors,
+										bool [] isDestination,
+									    bool [] isSource = null,
+									    bool [] ignoreEdgesTo = null,
+										bool [] ignoreEdgesFrom = null,
+										int [] [] ignoreEdges = null,
+									    bool returnMultiple = false,
+									    bool includeEdgesFromSource = false)
 		{
 			var discovered = new bool [neighbors.Length];
 			var q = new int [neighbors.Length];
@@ -131,6 +138,10 @@ namespace Mono.Linker.Analysis
 						continue;
 
 					discovered [v] = true;
+
+					int [] destinationsToIgnore = ignoreEdges? [u];
+					if (destinationsToIgnore != null && destinationsToIgnore.Contains (v))
+						continue;
 
 					prev [v] = u;
 					dist [v] = dist [u] + 1;

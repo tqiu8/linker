@@ -16,20 +16,21 @@ namespace Mono.Linker.Analysis
 		public Dictionary<InterestingReason, HashSet<AnalyzedStacktrace>> stacktracesPerReason;
 		public Dictionary<MethodDefinition, HashSet<AnalyzedStacktrace>> stacktracesPerGroup;
 		public List<AnalyzedStacktrace> allStacktraces;
-		ICallGraph<MethodDefinition> callGraph;
-		ApiFilter apiFilter;
 
-		Formatter formatter;
-		Grouping grouping;
+		private readonly ICallGraph<MethodDefinition> callGraph;
+		private readonly ApiFilter apiFilter;
+		private readonly Dictionary<MethodDefinition, HashSet<MethodDefinition>> resolvedReflectionCalls;
+		private readonly IntCallGraph intCallGraph;
+		private readonly IntMapping<MethodDefinition> mapping;
+		private readonly Formatter formatter;
+		private readonly Grouping grouping;
 
-		bool [] isVirtualMethod;
-		bool [] isAnnotatedSafeMethod;
-		InterestingReason [] interestingReasons;
-		int numInterestingMethods;
-		int numEntryMethods;
+		private bool [] isVirtualMethod;
+		private bool [] isAnnotatedSafeMethod;
+		private InterestingReason [] interestingReasons;
+		private int numInterestingMethods;
+		private int numEntryMethods;
 
-		public IntCallGraph intCallGraph;
-		IntMapping<MethodDefinition> mapping;
 
 		// track methods for each interesting reason
 		public Dictionary<InterestingReason, HashSet<MethodDefinition>> methodsPerReason;
@@ -51,6 +52,7 @@ namespace Mono.Linker.Analysis
 						IntCallGraph intCallGraph,
 						IntMapping<MethodDefinition> mapping,
 						ApiFilter apiFilter,
+						Dictionary<MethodDefinition, HashSet<MethodDefinition>> resolvedReflectionCalls,
 						Formatter formatter = null,
 						Grouping grouping = Grouping.None)
 		{
@@ -58,6 +60,7 @@ namespace Mono.Linker.Analysis
 			this.mapping = mapping;
 			this.intCallGraph = intCallGraph;
 			this.apiFilter = apiFilter;
+			this.resolvedReflectionCalls = resolvedReflectionCalls;
 			this.formatter = formatter;
 			this.grouping = grouping;
 		}
@@ -171,7 +174,8 @@ namespace Mono.Linker.Analysis
 			interestingReasons = new InterestingReason [intCallGraph.numMethods];
 			isVirtualMethod = new bool [callGraph.Methods.Count];
 			isAnnotatedSafeMethod = new bool [callGraph.Methods.Count];
-			var isPublicOrVirtual = new bool [callGraph.Methods.Count];
+			bool[] isPublicOrVirtual = new bool [callGraph.Methods.Count];
+			int [] [] safeEdges = new int [callGraph.Methods.Count] [];
 			for (int i = 0; i < intCallGraph.numMethods; i++) {
 				var cecilMethod = mapping.intToMethod [i];
 				if (cecilMethod == null) {
@@ -194,6 +198,16 @@ namespace Mono.Linker.Analysis
 				}
 				if (apiFilter.IsAnnotatedLinkerFriendlyApi (cecilMethod)) {
 					isAnnotatedSafeMethod [i] = true;
+				}
+				if (resolvedReflectionCalls.TryGetValue(cecilMethod, out HashSet<MethodDefinition> callees)) {
+					int [] safeCallees = new int [callees.Count];
+					int j = 0;
+					foreach (MethodDefinition calleeMethodDef in callees) {
+						int calleeMethodIndex = mapping.methodToInt [calleeMethodDef];
+						safeCallees [j++] = calleeMethodIndex;
+					}
+
+					safeEdges [i] = safeCallees;
 				}
 			}
 
@@ -250,12 +264,13 @@ namespace Mono.Linker.Analysis
 
 			IntBFS.AllPairsBFS (
 				neighbors: intCallGraph.callers,                 // search bottom-up (callees to callers).
-				isSource: intCallGraph.isInteresting,                   // look for a shortest path from each "interesting" method...
+				isSource: intCallGraph.isInteresting,            // look for a shortest path from each "interesting" method...
 				isDestination: isPublicOrVirtual,                // ...to each public or virtual method.
 				numMethods: intCallGraph.numMethods,
 				excludePathsToSources: true,                     // ...that don't go through any other "interesting" methods.
 				ignoreEdgesTo: isAnnotatedSafeMethod,            // ignore calls from annotated safe methods (edges to safe methods in the bottom-up case)
 				ignoreEdgesFrom: isVirtualMethod,                // ignore calls to virtual methods (edges from virtual methods in the bottom-up case)
+				ignoreEdges: safeEdges,                          // ignore all edges already marked as safe
 
 				// don't report paths that go through another public or virtual method
 				//   this is ensured by the BFS algorithm - it won't consider edges from a destination node. (calls to a public/virtual)
