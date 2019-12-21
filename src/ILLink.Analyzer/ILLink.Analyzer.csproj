@@ -20,6 +20,9 @@
     <Copyright>Copyright</Copyright>
     <PackageTags>analyzer, analyzers</PackageTags>
     <NoPackageAnalysis>true</NoPackageAnalysis>
+    
+    <!-- Necessary to override the linker wide setting in Directory.Build.Props -->
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
