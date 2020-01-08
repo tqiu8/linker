@@ -16,14 +16,25 @@ namespace LinkerAnalyzer.Core
 {
 	public class VertexData {
 		public string value;
+		public string type;
+		public string name;
 		public List<int> parentIndexes;
 		public int index;
+		public List<VertexData> parentDeps;
 
 		public string DepsCount {
 			get {
 				if (parentIndexes == null || parentIndexes.Count < 1)
 					return "";
 				return string.Format (" [{0} deps]", parentIndexes.Count);
+			}
+		}
+
+		public int DepsNumber {
+			get {
+				if (parentIndexes == null || parentIndexes.Count < 1)
+					return 0;
+				return parentIndexes.Count;
 			}
 		}
 	}
@@ -60,17 +71,21 @@ namespace LinkerAnalyzer.Core
 						if (reader.Name == "edge" && reader.IsStartElement ()) {
 							string b = reader.GetAttribute ("b");
 							string e = reader.GetAttribute ("e");
-							//Console.WriteLine ("edge value " + b + "  -->  " + e);
+							// Console.WriteLine ("edge value " + b + "  -->  " + e);
 
 							if (e != b) {
 								VertexData begin = Vertex (b, true);
 								VertexData end = Vertex (e, true);
-
-								if (end.parentIndexes == null)
+								
+								if (end.parentIndexes == null) {
 									end.parentIndexes = new List<int> ();
+									end.parentDeps = new List<VertexData> ();
+								}
+								
 								if (!end.parentIndexes.Contains (begin.index)) {
+									end.parentDeps.Add(begin);
 									end.parentIndexes.Add (begin.index);
-									//Console.WriteLine (" end parent index: {0}", end.parentIndexes);
+									// Console.WriteLine (" end parent index: {0}", end.parentIndexes);
 								}
 							}
 						}
@@ -90,10 +105,15 @@ namespace LinkerAnalyzer.Core
 			} else {
 				if (create) {
 					index = vertices.Count;
-					VertexData vertex = new VertexData () { value = vertexName, index = index };
+					string prefix = vertexName.Substring (0, vertexName.IndexOf (':'));
+					
+					VertexData vertex = new VertexData () { value = vertexName, 
+															index = index, 
+															type = prefix,
+															name = VertexName(vertexName) };
+					
 					vertices.Add (vertex);
 					indexes.Add (vertexName, index);
-					string prefix = vertexName.Substring (0, vertexName.IndexOf (':'));
 					if (counts.ContainsKey (prefix))
 						counts [prefix]++;
 					else
@@ -113,6 +133,11 @@ namespace LinkerAnalyzer.Core
 		public VertexData Vertex (int index)
 		{
 			return vertices [index];
+		}
+
+		public string VertexName (string vertexName)
+		{
+			return vertexName.Substring(vertexName.IndexOf(':') + 1);
 		}
 
 		IEnumerable<Tuple<VertexData, int>> AddDependencies (VertexData vertex, HashSet<int> reachedVertices, int depth)
