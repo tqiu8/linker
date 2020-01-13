@@ -179,12 +179,10 @@ namespace LinkerAnalyzer
 		public void GetDependencyArray (VertexData vertex) {
 
 			depJsonWriter?.WriteStartObject ();
-			depJsonWriter?.WriteString ("name", vertex.name);
+			depJsonWriter?.WriteString ("name", vertex.value);
 			if (vertex.parentIndexes != null) {
 				depJsonWriter?.WritePropertyName ("dependencies");
-				depJsonWriter?.WriteStartArray ();
 				JsonSerializer.Serialize (depJsonWriter, vertex.parentIndexes);
-				depJsonWriter?.WriteEndArray ();
 			}
 			depJsonWriter?.WriteEndObject ();
 		}
@@ -211,7 +209,7 @@ namespace LinkerAnalyzer
 
 			if (indexJsonOutputFileName != null) {
 				indexJsonWriter = new Utf8JsonWriter (new FileStream(indexJsonOutputFileName, FileMode.Create, FileAccess.Write, FileShare.Read));
-				JsonSerializer.Serialize(indexJsonWriter, indexes); 
+				JsonSerializer.Serialize(indexJsonWriter, indexes.ToDictionary(v => v.Value.ToString(), v => v.Key)); 
 			}
 
 			DependencyWheel();
@@ -235,13 +233,8 @@ namespace LinkerAnalyzer
 
 				depJsonWriter?.WriteStartArray ();
 
-				// limitVertices = vertices.Where((v => (v.parentIndexes != null) && (v.parentIndexes.Count > 5))).ToList();
-				// limitIndexes = limitVertices.Select((v, index) => new {v.value, index})
-				// 							.ToDictionary(x => x.value, x => x.index);
-
 				foreach (var vertex in vertices)
 					GetDependencyArray (vertex);
-
 
 				depJsonWriter?.WriteEndArray (); 
 
