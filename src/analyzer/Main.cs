@@ -28,6 +28,7 @@ namespace LinkerAnalyzer
 			bool reduceToTree = false;
 			bool verbose = false;
 			bool flatDeps = false;
+			bool depWheel = false;
 			string linkedPath = null;
 			string sizeJsonFileName = null;
 			string depJsonFileName = null;
@@ -92,7 +93,7 @@ namespace LinkerAnalyzer
 				deps.ShowRawDependencies (rawName);
 			if (showTypeDeps)
 				deps.ShowTypeDependencies (typeName);
-			if (showAllDeps)
+			if (showAllDeps) 
 				deps.ShowAllDependencies ();
 			else if (showTypes)
 				deps.ShowTypesDependencies ();

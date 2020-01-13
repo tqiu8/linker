@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using LinkerAnalyzer.Core;
 using System.Text.Json;
+using System.Linq;
 using System.IO;
 using System.IO.Compression;
 
@@ -22,6 +23,11 @@ namespace LinkerAnalyzer
 		public bool FlatDeps;
 		private Utf8JsonWriter depJsonWriter = null;
 		private string depJsonOutputFileName = null;
+		private Utf8JsonWriter indexJsonWriter = null;
+		private string indexJsonOutputFileName = null;
+		private string wheelJsonOutputFileName = null;
+		private List<VertexData> limitVertices = null;
+		private Dictionary<string, int> limitIndexes = null;
 
 		public void ShowDependencies (string raw, List<VertexData> verticesList, string searchString)
 		{
@@ -72,16 +78,16 @@ namespace LinkerAnalyzer
 				"" : string.Format (" size: {0}", SpaceAnalyzer.GetSize (vertex));
 		}
 
-		public void writeVertexDeps(VertexData vertex)
+		public void WriteVertexDeps(VertexData vertex)
 		{
 			depJsonWriter?.Flush ();
 			depJsonWriter?.WriteStartObject ();
-			depJsonWriter?.WriteString ("name", vertex.name);
+			depJsonWriter?.WriteNumber ("index", vertex.index);
 			depJsonWriter?.WriteString("type", vertex.type);
 			depJsonWriter?.WriteNumber ("deps", vertex.DepsNumber);
 		}
 
-		public void ShowDependencies (VertexData vertex)
+		public void ShowDependencies (VertexData vertex, bool useSize = false)
 		{
 			if (FlatDeps) {
 				ShowFlatDependencies (vertex);
@@ -90,7 +96,7 @@ namespace LinkerAnalyzer
 			}
 
 			Header ("{0} dependencies", vertex.value);
-			writeVertexDeps(vertex);
+			WriteVertexDeps(vertex);
 
 			if (vertex.parentIndexes == null) {
 				Console.WriteLine ("Root dependency");
@@ -109,7 +115,7 @@ namespace LinkerAnalyzer
 					// writeVertexDeps (childVertex);
 					depJsonWriter?.Flush ();
 					depJsonWriter?.WriteStartObject ();
-					depJsonWriter?.WriteString ("name", childVertex.name);
+					depJsonWriter?.WriteNumber ("index", childVertex.index);
 					depJsonWriter?.WriteString("type", childVertex.type);
 					depJsonWriter?.WriteNumber ("deps", childVertex.DepsNumber);
 					depJsonWriter?.WritePropertyName("children");
@@ -122,34 +128,32 @@ namespace LinkerAnalyzer
 						childVertex = Vertex (childVertex.parentIndexes [0]);
 						Console.WriteLine ("\t| {0}{1}", childVertex.value, childVertex.DepsCount);
 
-						writeVertexDeps(childVertex);
+						WriteVertexDeps(childVertex);
 						
 						int parentSize = 0;
 
 						if (childVertex.parentDeps != null) {
 							depJsonWriter?.WritePropertyName ("children");
 							depJsonWriter?.WriteStartArray ();
-							depJsonWriter?.WriteStartObject();
+							// depJsonWriter?.WriteStartObject();
 							foreach (VertexData parent in childVertex.parentDeps) {
 								// writeVertexDeps (parent);
 								size = SpaceAnalyzer.GetSize ( parent );
 								// depJsonWriter?.WriteNumber ("size", size);
-								Console.WriteLine("name " + parent.name);
-								depJsonWriter?.WriteString("name", parent.name);
+								depJsonWriter?.WriteNumberValue (parent.index);
 								parentSize += size;
 								// depJsonWriter?.WriteNull ("children");
 								// depJsonWriter?.WriteEndObject ();
 							}
-							depJsonWriter?.WriteEndObject();
+							// depJsonWriter?.WriteEndObject();
 							depJsonWriter?.WriteEndArray ();
 						} else {
 							depJsonWriter?.WriteNull ("children");
 						}
-						
 
 						// SHOULD ADD SIZES OF DEPS TO VERTEX SIZE?
 						size = SpaceAnalyzer.GetSize ( childVertex ) + parentSize;
-						depJsonWriter?.WriteNumber ("size", size);
+						if (useSize) depJsonWriter?.WriteNumber ("size", size);
 						depJsonWriter?.WriteEndObject ();
 						depSize += size;
 					}
@@ -157,31 +161,45 @@ namespace LinkerAnalyzer
 					depJsonWriter?.WriteEndArray ();
 
 					size = depSize + childSize;
-					depJsonWriter?.WriteNumber ("size", size);
+					if (useSize) depJsonWriter?.WriteNumber ("size", size);
 					depJsonWriter?.WriteEndObject ();
 					totalSize += size;
 					if (Tree)
 						break;
 				}
 				
-				
 				depJsonWriter?.WriteEndArray ();
-				depJsonWriter?.WriteNumber("size", totalSize);
+				if (useSize) depJsonWriter?.WriteNumber("size", totalSize);
 				
 			}
 			depJsonWriter?.WriteEndObject();
 			
 		}
 
+		public void GetDependencyArray (VertexData vertex) {
+
+			depJsonWriter?.WriteStartObject ();
+			depJsonWriter?.WriteString ("name", vertex.name);
+			if (vertex.parentIndexes != null) {
+				depJsonWriter?.WritePropertyName ("dependencies");
+				depJsonWriter?.WriteStartArray ();
+				JsonSerializer.Serialize (depJsonWriter, vertex.parentIndexes);
+				depJsonWriter?.WriteEndArray ();
+			}
+			depJsonWriter?.WriteEndObject ();
+		}
+
 		public void ShowAllDependencies ()
 		{
+			depJsonWriter = null;
+
 			Header ("All dependencies");
 			Console.WriteLine ("Types count: {0}", vertices.Count);
 			if (depJsonOutputFileName != null) {
 				depJsonWriter = new Utf8JsonWriter (new FileStream(depJsonOutputFileName, FileMode.Create, FileAccess.Write, FileShare.Read));
 			}
 
-			using(depJsonWriter) {
+			using (depJsonWriter) {
 				depJsonWriter?.WriteStartArray ();
 
 				foreach (var vertex in vertices)
@@ -190,12 +208,51 @@ namespace LinkerAnalyzer
 				depJsonWriter?.WriteEndArray ();
 			}
 
-			
+
+			if (indexJsonOutputFileName != null) {
+				indexJsonWriter = new Utf8JsonWriter (new FileStream(indexJsonOutputFileName, FileMode.Create, FileAccess.Write, FileShare.Read));
+				JsonSerializer.Serialize(indexJsonWriter, indexes); 
+			}
+
+			DependencyWheel();
+		}
+
+		public void DependencyWheel() 
+		{
+			depJsonWriter = null;
+
+			if (depJsonOutputFileName != null) {
+				depJsonWriter = new Utf8JsonWriter (new FileStream(wheelJsonOutputFileName, FileMode.Create, FileAccess.Write, FileShare.Read));
+			}
+
+			using (depJsonWriter) {
+				// depJsonWriter?.WritePropertyName ("packageNames");
+				// depJsonWriter?.WriteStartArray ();
+				// JsonSerializer.Serialize(depJsonWriter, indexes.Keys.ToList());
+				// // foreach (var key in indexes.Keys.ToList()) 
+				// // 	depJsonWriter?.WriteStringValue(key);
+				// depJsonWriter?.WriteEndArray ();
+
+				depJsonWriter?.WriteStartArray ();
+
+				// limitVertices = vertices.Where((v => (v.parentIndexes != null) && (v.parentIndexes.Count > 5))).ToList();
+				// limitIndexes = limitVertices.Select((v, index) => new {v.value, index})
+				// 							.ToDictionary(x => x.value, x => x.index);
+
+				foreach (var vertex in vertices)
+					GetDependencyArray (vertex);
+
+
+				depJsonWriter?.WriteEndArray (); 
+
+			}
 		}
 
 		public void OutputDepJson(string fileName) 
 		{		
-			depJsonOutputFileName = fileName;
+			depJsonOutputFileName = fileName + "dependency.json";
+			indexJsonOutputFileName = fileName + "index.json";
+			wheelJsonOutputFileName = fileName + "wheel.json";
 		}
 
 		public void ShowTypesDependencies ()
