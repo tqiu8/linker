@@ -164,3 +164,4 @@ namespace LinkerAnalyzer.Core
 		}
 	}
 }
+

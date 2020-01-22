@@ -28,7 +28,6 @@ namespace LinkerAnalyzer
 			bool reduceToTree = false;
 			bool verbose = false;
 			bool flatDeps = false;
-			bool depWheel = false;
 			string linkedPath = null;
 			string sizeJsonFileName = null;
 			string depJsonFileName = null;
@@ -45,7 +44,7 @@ namespace LinkerAnalyzer
 				{ "t|typedeps=", "show type dependencies. The VALUE can be regular expression", v => { showTypeDeps = v != null; typeName = v; } },
 				{ "f|flat", "show all dependencies per vertex and their distance", v => flatDeps = v != null },
 				{ "json=", "write sizes to the specified json file. Works only if linkedpath is also specified.", v => { sizeJsonFileName = v; } },
-				{ "d|depjson=", "write dependencies and sizes to the specified json file. Works only if linkedpath is also specified.", v => { depJsonFileName = v; } },
+				{ "d|outjson=", "write dependencies and sizes to the specified directory. Works only if linkedpath is also specified.", v => { depJsonFileName = v; } },
 				{ "v|verbose", "be more verbose. Enables stat and roots options.", v => verbose = v != null },
 			};
 
