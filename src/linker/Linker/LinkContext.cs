@@ -117,6 +117,8 @@ namespace Mono.Linker {
 
 		public bool StripResources { get; set; }
 
+		public List<string> Substitutions { get; private set; }
+
 		public System.Collections.IDictionary Actions {
 			get { return _actions; }
 		}
@@ -149,7 +151,9 @@ namespace Mono.Linker {
 
 		public Tracer Tracer { get; private set; }
 
-		public string[] ExcludedFeatures { get; set; }
+		public IReflectionPatternRecorder ReflectionPatternRecorder { get; set; }
+
+		public string [] ExcludedFeatures { get; set; }
 
 		public CodeOptimizations DisabledOptimizations { get; set; }
 
@@ -187,12 +191,27 @@ namespace Mono.Linker {
 			_annotations = factory.CreateAnnotationStore (this);
 			MarkingHelpers = factory.CreateMarkingHelpers (this);
 			Tracer = factory.CreateTracer (this);
+			ReflectionPatternRecorder = new LoggingReflectionPatternRecorder (this);
 			MarkedKnownMembers = new KnownMembers ();
 			StripResources = true;
 
 			// See https://github.com/mono/linker/issues/612
 			DisabledOptimizations |= CodeOptimizations.UnreachableBodies;
 			DisabledOptimizations |= CodeOptimizations.ClearInitLocals;
+		}
+
+		public void AddSubstitutionFile (string file)
+		{
+			if (Substitutions == null) {
+				Substitutions = new List<string> ();
+				Substitutions.Add (file);
+				return;
+			}
+
+			if (Substitutions.Contains (file))
+				return;
+
+			Substitutions.Add (file);
 		}
 
 		public TypeDefinition GetType (string fullName)
@@ -438,5 +457,10 @@ namespace Mono.Linker {
 		/// Option to remove .interfaceimpl for interface types that are not used
 		/// </summary>
 		UnusedInterfaces = 1 << 4,
+
+		/// <summary>
+		/// Option to do interprocedural constant propagation on return values
+		/// </summary>
+		IPConstantPropagation = 1 << 5
 	}
 }

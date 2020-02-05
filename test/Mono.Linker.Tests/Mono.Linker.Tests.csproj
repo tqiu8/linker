@@ -30,7 +30,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\external\cecil\Mono.Cecil.csproj" />
-    <ProjectReference Include="..\..\external\cecil\symbols\mdb\Mono.Cecil.Mdb.csproj" />
     <ProjectReference Include="..\..\external\cecil\symbols\pdb\Mono.Cecil.Pdb.csproj" />
     <ProjectReference Include="..\..\src\linker\Mono.Linker.csproj" />
     <ProjectReference Include="..\Mono.Linker.Tests.Cases\Mono.Linker.Tests.Cases.csproj" />
@@ -43,16 +42,13 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="2.10.0" />
     <PackageReference Include="nunit" Version="3.10.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="3.10.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.7.2" />
     <!-- This reference is purely so that the linker can resolve this
          dependency of mscorlib. It is not actually required to build
          the tests. -->
     <PackageReference Include="System.Threading.AccessControl" Version="4.5.0" />
   </ItemGroup>
 
-  <Target Name="PrepareTools"
-          BeforeTargets="Build"
-          Condition="$(ILLinkBuild)">
+  <Target Name="PrepareTools" BeforeTargets="Build" Condition="$(ILLinkBuild)">
     <!-- Restore ilasm using ilasm.ilproj. Restore must be done
          separately from copy with a different set of input
          properties, to force MSBuild to re-evaluate using new props
@@ -68,9 +64,13 @@
   </Target>
 
   <ItemGroup Condition="!$(ILLinkBuild)">
-    <PackageReference Include="NUnit" Version="3.6.1" />
-    <PackageReference Include="NUnit.ConsoleRunner" Version="3.6.1" />
-    <PackageReference Include="NUnit.Extension.NUnitV2ResultWriter" Version="3.5.0" />
+    <ProjectReference Include="..\..\external\cecil\symbols\mdb\Mono.Cecil.Mdb.csproj" />
+    <PackageReference Include="NUnit" Version="3.10.0" />
+    <PackageReference Include="NUnit.ConsoleRunner" Version="3.10.0" />
   </ItemGroup>
+
+  <Target Name="RunTestsOnMono" Condition="!$(ILLinkBuild)">
+    <Exec Command="mono $(PkgNUnit_ConsoleRunner)/tools/nunit3-console.exe --result=TestResults.xml $(OutputPath)Mono.Linker.Tests.dll" />
+  </Target>
 
 </Project>
