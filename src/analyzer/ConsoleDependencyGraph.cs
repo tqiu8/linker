@@ -84,12 +84,11 @@ namespace LinkerAnalyzer
 			}
 
 			Header ("{0} dependencies", vertex.value);
-
+			GetDependencyArray (vertex);
 			if (vertex.parentIndexes == null) {
 				Console.WriteLine ("Root dependency");
 			} else {
 				int i = 0;	
-				GetDependencyArray (vertex);			
 				foreach (int index in vertex.parentIndexes) {
 					Console.WriteLine ("Dependency #{0}", ++i);
 					Console.WriteLine ($"\t{vertex.value}{SizeString (vertex)}");
@@ -113,10 +112,8 @@ namespace LinkerAnalyzer
 			depJsonWriter?.WriteStartObject ();
 			depJsonWriter?.WriteString ("name", vertex.value);
 			depJsonWriter?.WriteNumber ("size", SpaceAnalyzer.GetSize (vertex));
-			if (vertex.parentIndexes != null) {
-				depJsonWriter?.WritePropertyName ("dependencies");
-				JsonSerializer.Serialize (depJsonWriter, vertex.parentIndexes);
-			}
+			depJsonWriter?.WritePropertyName ("dependencies");
+			JsonSerializer.Serialize (depJsonWriter, vertex.parentIndexes);
 			depJsonWriter?.WriteEndObject ();
 		}
 
