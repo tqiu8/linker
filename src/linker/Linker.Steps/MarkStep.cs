@@ -205,12 +205,6 @@ namespace Mono.Linker.Steps {
 
 		void Process ()
 		{
-			//
-			// This can happen when linker is called on facade with all references skipped
-			//
-			if (QueueIsEmpty ())
-				return;
-
 			while (ProcessPrimaryQueue () || ProcessLazyAttributes () || ProcessLateMarkedAttributes ())
 
 			// deal with [TypeForwardedTo] pseudo-attributes
@@ -477,7 +471,7 @@ namespace Mono.Linker.Steps {
 			var args = ca.ConstructorArguments;
 			if (args.Count >= 3 && args [2].Value is string assemblyName) {
 				if (!_context.Resolver.AssemblyCache.TryGetValue (assemblyName, out assembly)) {
-					_context.Logger.LogMessage (MessageImportance.Low, $"Could not resolve '{assemblyName}' assembly dependency");
+					_context.LogMessage (MessageImportance.Low, $"Could not resolve '{assemblyName}' assembly dependency");
 					return;
 				}
 			} else {
@@ -489,7 +483,7 @@ namespace Mono.Linker.Steps {
 				td = FindType (assembly ?? context.Module.Assembly, typeName);
 
 				if (td == null) {
-					_context.Logger.LogMessage (MessageImportance.Low, $"Could not resolve '{typeName}' type dependency");
+					_context.LogMessage (MessageImportance.Low, $"Could not resolve '{typeName}' type dependency");
 					return;
 				}
 			} else {
@@ -511,13 +505,18 @@ namespace Mono.Linker.Steps {
 				}
 			}
 
+			if (member == "*") {
+				MarkEntireType (td);
+				return;
+			}
+
 			if (MarkDependencyMethod (td, member, signature))
 				return;
 
 			if (MarkDependencyField (td, member))
 				return;
 
-			_context.Logger.LogMessage (MessageImportance.High, $"Could not resolve dependency member '{member}' declared in type '{td.FullName}'");
+			_context.LogMessage (MessageImportance.High, $"Could not resolve dependency member '{member}' declared in type '{td.FullName}'");
 		}
 
 		static TypeDefinition FindType (AssemblyDefinition assembly, string fullName)
@@ -672,7 +671,9 @@ namespace Mono.Linker.Steps {
 
 			// If an attribute's module has not been marked after processing all types in all assemblies and the attribute itself has not been marked,
 			// then surely nothing is using this attribute and there is no need to mark it
-			if (!Annotations.IsMarked (resolvedConstructor.Module) && !Annotations.IsMarked (ca.AttributeType))
+			if (!Annotations.IsMarked (resolvedConstructor.Module) &&
+				!Annotations.IsMarked (ca.AttributeType) &&
+				Annotations.GetAction (resolvedConstructor.Module.Assembly) == AssemblyAction.Link)
 				return false;
 
 			if (ca.Constructor.DeclaringType.Namespace == "System.Diagnostics") {
@@ -1655,7 +1656,7 @@ namespace Mono.Linker.Steps {
 
 		protected TypeReference GetOriginalType (TypeReference type)
 		{
-			while (type is TypeSpecification) {
+			while (type is TypeSpecification specification) {
 				if (type is GenericInstanceType git)
 					MarkGenericArguments (git);
 
@@ -1668,7 +1669,7 @@ namespace Mono.Linker.Steps {
 					break; // FunctionPointerType is the original type
 				}
 
-				type = ((TypeSpecification)type).ElementType;
+				type = specification.ElementType;
 			}
 
 			return type;
@@ -1893,11 +1894,11 @@ namespace Mono.Linker.Steps {
 
 		protected MethodReference GetOriginalMethod (MethodReference method)
 		{
-			while (method is MethodSpecification) {
+			while (method is MethodSpecification specification) {
 				if (method is GenericInstanceMethod gim)
 					MarkGenericArguments (gim);
 
-				method = ((MethodSpecification) method).ElementMethod;
+				method = specification.ElementMethod;
 			}
 
 			return method;
@@ -2075,10 +2076,7 @@ namespace Mono.Linker.Steps {
 			MarkType (nse);
 
 			var nseCtor = MarkMethodIf (nse.Methods, KnownMembers.IsNotSupportedExceptionCtorString);
-			if (nseCtor == null)
-				throw new MarkException ($"Could not find constructor on '{nse.FullName}'");
-
-			_context.MarkedKnownMembers.NotSupportedExceptionCtorString = nseCtor;
+			_context.MarkedKnownMembers.NotSupportedExceptionCtorString = nseCtor ?? throw new MarkException ($"Could not find constructor on '{nse.FullName}'");
 
 			var objectType = BCL.FindPredefinedType ("System", "Object", _context);
 			if (objectType == null)
@@ -2087,10 +2085,7 @@ namespace Mono.Linker.Steps {
 			MarkType (objectType);
 
 			var objectCtor = MarkMethodIf (objectType.Methods, MethodDefinitionExtensions.IsDefaultConstructor);
-			if (objectCtor == null)
-				throw new MarkException ($"Could not find constructor on '{objectType.FullName}'");
-
-			_context.MarkedKnownMembers.ObjectCtor = objectCtor;
+			_context.MarkedKnownMembers.ObjectCtor = objectCtor ?? throw new MarkException ($"Could not find constructor on '{objectType.FullName}'");
 		}
 
 		bool MarkDisablePrivateReflectionAttribute ()
@@ -2105,10 +2100,7 @@ namespace Mono.Linker.Steps {
 			MarkType (nse);
 
 			var ctor = MarkMethodIf (nse.Methods, MethodDefinitionExtensions.IsDefaultConstructor);
-			if (ctor == null)
-				throw new MarkException ($"Could not find constructor on '{nse.FullName}'");
-
-			_context.MarkedKnownMembers.DisablePrivateReflectionAttributeCtor = ctor;
+			_context.MarkedKnownMembers.DisablePrivateReflectionAttributeCtor = ctor ?? throw new MarkException ($"Could not find constructor on '{nse.FullName}'");
 			return true;
 		}
 
@@ -2263,10 +2255,10 @@ namespace Mono.Linker.Steps {
 				break;
 			case OperandType.InlineTok:
 				object token = instruction.Operand;
-				if (token is TypeReference)
-					MarkType ((TypeReference) token);
-				else if (token is MethodReference)
-					MarkMethod ((MethodReference) token);
+				if (token is TypeReference typeReference)
+					MarkType (typeReference);
+				else if (token is MethodReference methodReference)
+					MarkMethod (methodReference);
 				else
 					MarkField ((FieldReference) token);
 				break;

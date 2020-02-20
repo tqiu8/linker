@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Xml.Linq;
 using Xunit;
@@ -18,7 +19,7 @@ namespace ILLink.Tests
 	/// </summary>
 	public class ProjectFixture
 	{
-		private FixtureLogger logger;
+		private readonly FixtureLogger logger;
 		protected CommandHelper CommandHelper;
 
 		protected void LogMessage (string message)
@@ -30,6 +31,27 @@ namespace ILLink.Tests
 		{
 			logger = new FixtureLogger (diagnosticMessageSink);
 			CommandHelper = new CommandHelper (logger);
+		}
+
+		protected void AddNuGetConfig(string projectRoot)
+		{
+			var nugetConfig = Path.Combine(projectRoot, "NuGet.config");
+			var xdoc = new XDocument();
+			var configuration = new XElement("configuration");
+			var packageSources = new XElement("packageSources");
+			packageSources.Add(new XElement("add",
+						new XAttribute("key", "dotnet-core"),
+						new XAttribute("value", "https://dotnet.myget.org/F/dotnet-core/api/v3/index.json")));
+			packageSources.Add(new XElement("add",
+						new XAttribute("key", "local linker feed"),
+						new XAttribute("value", TestContext.PackageSource)));
+
+			configuration.Add(packageSources);
+			xdoc.Add(configuration);
+
+			using (var fs = new FileStream(nugetConfig, FileMode.Create)) {
+				xdoc.Save(fs);
+			}
 		}
 
 		protected void AddLinkerReference(string csproj)
@@ -51,7 +73,6 @@ namespace ILLink.Tests
 					new XElement(ns + "PackageReference",
 						new XAttribute("Include", TestContext.TasksPackageName),
 						new XAttribute("Version", TestContext.TasksPackageVersion))));
-				added= true;
 			}
 
 			using (var fs = new FileStream(csproj, FileMode.Create)) {
@@ -59,25 +80,24 @@ namespace ILLink.Tests
 			}
 		}
 
-		static void AddLinkerRoots(string csproj, List<string> rootFiles)
+		protected string CreateTestFolder(string projectName)
 		{
-			var xdoc = XDocument.Load(csproj);
-			var ns = xdoc.Root.GetDefaultNamespace();
+			string tempFolder = Path.GetFullPath(Path.Combine("tests-temp", projectName));
+			Directory.CreateDirectory(tempFolder);
 
-			var rootsItemGroup = new XElement(ns+"ItemGroup");
-			foreach (var rootFile in rootFiles) {
-				rootsItemGroup.Add(new XElement(ns+"LinkerRootFiles",
-					new XAttribute("Include", rootFile)));
-			}
+			// write empty Directory.Build.props and Directory.Build.targets to disable accidental import of arcade from repo root
+			File.WriteAllText(Path.Combine(tempFolder, "Directory.Build.props"), "<Project></Project>");
+			File.WriteAllText(Path.Combine(tempFolder, "Directory.Build.targets"), "<Project></Project>");
 
-			var propertyGroup = xdoc.Root.Elements(ns + "PropertyGroup").First();
-			propertyGroup.AddAfterSelf(rootsItemGroup);
-
-			using (var fs = new FileStream(csproj, FileMode.Create)) {
-				xdoc.Save(fs);
-			}
+			return Path.Combine(tempFolder, projectName);
 		}
 
+		protected void WriteEmbeddedResource(string resourceName, string destination)
+		{
+			var assembly = Assembly.GetExecutingAssembly();
+			var resourceStream = assembly.GetManifestResourceStream(resourceName);
+			resourceStream.CopyTo(File.Create(destination));
+		}
 	}
 
 	/// <summary>
