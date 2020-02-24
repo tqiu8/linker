@@ -33,6 +33,7 @@
 
   <ItemGroup Condition="'$(MonoBuild)' == ''">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="All" Version="1.0.0" />
+    <PackageReference Include="System.Text.Json" Version="4.7.1" />
   </ItemGroup>
 
 </Project>

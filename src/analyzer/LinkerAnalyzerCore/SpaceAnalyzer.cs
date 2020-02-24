@@ -129,10 +129,7 @@ namespace LinkerAnalyzer.Core
 					size += GetMethodSize (method);
 			}
 
-<<<<<<< HEAD
-=======
 			type.Resolve ();
->>>>>>> master
 			try {
 				sizes.Add (GetTypeKey (type), size);
 			} catch (ArgumentException e) {

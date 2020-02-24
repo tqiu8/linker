@@ -46,6 +46,10 @@
     <ProjectReference Include="..\..\external\cecil\symbols\pdb\Mono.Cecil.Pdb.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="netstandard"/>
+  </ItemGroup>
+
   <ItemGroup Condition="'$(MonoBuild)' == ''">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="All" Version="1.0.0" />
   </ItemGroup>
