@@ -5,6 +5,8 @@ using Mono.Linker.Tests.Cases.Expectations.Metadata;
 namespace Mono.Linker.Tests.Cases.UnreachableBlock
 {
 //	[SetupCSharpCompilerToUse ("csc")]
+	[SetupCompileArgument ("/optimize+")]
+	[SetupLinkerArgument ("--enable-opt", "ipconstantpropagation")]
 	public class SimpleConditionalProperty
 	{
 		public static void Main()
