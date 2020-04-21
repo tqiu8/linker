@@ -26,6 +26,11 @@ Param(
   [Parameter(ValueFromRemainingArguments=$true)][String[]]$properties
 )
 
+# Unset 'Platform' environment variable to avoid unwanted collision in InstallDotNetCore.targets file
+# some computer has this env var defined (e.g. Some HP)
+if($env:Platform) {
+  $env:Platform=""  
+}
 function Print-Usage() {
   Write-Host "Common settings:"
   Write-Host "  -configuration <value>  Build configuration: 'Debug' or 'Release' (short: -c)"
@@ -61,6 +66,8 @@ function Print-Usage() {
   Write-Host "Command line arguments not listed above are passed thru to msbuild."
   Write-Host "The above arguments can be shortened as much as to be unambiguous (e.g. -co for configuration, -t for test, etc.)."
 }
+
+. $PSScriptRoot\tools.ps1
 
 function InitializeCustomToolset {
   if (-not $restore) {
@@ -113,8 +120,6 @@ function Build {
 }
 
 try {
-  . $PSScriptRoot\tools.ps1
-  
   if ($clean) {
     if (Test-Path $ArtifactsDir) {
       Remove-Item -Recurse -Force $ArtifactsDir
@@ -122,12 +127,7 @@ try {
     }
     exit 0
   }
-  
-  if ((Test-Path variable:LastExitCode) -And ($LastExitCode -ne 0)) {
-    Write-PipelineTelemetryError -Category 'InitializeToolset' -Message 'Eng/common/tools.ps1 returned a non-zero exit code.'
-    ExitWithExitCode $LastExitCode
-  }
-  
+
   if ($help -or (($null -ne $properties) -and ($properties.Contains('/help') -or $properties.Contains('/?')))) {
     Print-Usage
     exit 0

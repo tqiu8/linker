@@ -79,6 +79,12 @@ namespace Mono.Linker.Tests.TestCases
 			Run (testCase);
 		}
 
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.LoggingTests))]
+		public void LoggingTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
 		[TestCaseSource(typeof (TestDatabase), nameof (TestDatabase.TestFrameworkTests))]
 		public void TestFrameworkTests (TestCase testCase)
 		{
@@ -165,6 +171,43 @@ namespace Mono.Linker.Tests.TestCases
 
 		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.UnreachableBodyTests))]
 		public void UnreachableBodyTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.UnreachableBlockTests))]
+		public void UnreachableBlockTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.SubstitutionsTests))]
+		public void SubstitutionsTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.TracingTests))]
+		public void TracingTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.SealerTests))]
+		public void SealerTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
+
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.ExtensibilityTests))]
+		public void ExtensibilityTests (TestCase testCase)
+		{
+			Run (testCase);
+		}
+
+		[TestCaseSource (typeof (TestDatabase), nameof (TestDatabase.DataFlowTests))]
+		public void DataFlowTests (TestCase testCase)
 		{
 			Run (testCase);
 		}

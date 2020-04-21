@@ -1,20 +1,26 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Runtime.Serialization.Json;
 using System.Xml;
 using Mono.Cecil;
 using Mono.Linker.Tests.Cases.CommandLine.Mvid;
+using Mono.Linker.Tests.Cases.Interop.PInvoke.Individual;
 using Mono.Linker.Tests.Cases.References.Individual;
 using Mono.Linker.Tests.Cases.Tracing.Individual;
 using Mono.Linker.Tests.Extensions;
-using Mono.Linker.Tests.TestCases;
 using Mono.Linker.Tests.TestCasesRunner;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Mono.Linker.Tests.TestCases
 {
 	[TestFixture]
 	public class IndividualTests
 	{
+		private NPath TestsDirectory => TestDatabase.TestCasesRootDirectory.Parent.Combine ("Mono.Linker.Tests");
+	
 		[Test]
 		public void CanSkipUnresolved ()
 		{
@@ -29,12 +35,34 @@ namespace Mono.Linker.Tests.TestCases
 		}
 
 		[Test]
+		public void CanOutputPInvokes ()
+		{
+			var testcase = CreateIndividualCase (typeof (CanOutputPInvokes));
+			var result = Run (testcase);
+
+			var outputPath = result.OutputAssemblyPath.Parent.Combine ("pinvokes.json");
+			if (!outputPath.Exists ())
+				Assert.Fail ($"The json file with the list of all the PInvokes found by the linker is missing. Expected it to exist at {outputPath}");
+
+			var jsonSerializer = new DataContractJsonSerializer (typeof (List<PInvokeInfo>));
+
+			using (var fsActual = File.Open(outputPath, FileMode.Open))
+			using (var fsExpected = File.Open (TestsDirectory.Combine ("TestCases/Dependencies/PInvokesExpectations.json"), FileMode.Open)) {
+				var actual = jsonSerializer.ReadObject (fsActual) as List<PInvokeInfo>;
+				var expected = jsonSerializer.ReadObject (fsExpected) as List<PInvokeInfo>;
+				foreach (var pinvokePair in Enumerable.Zip(actual, expected, (fst, snd) => Tuple.Create(fst, snd))) {
+					Assert.That (pinvokePair.Item1.CompareTo (pinvokePair.Item2), Is.EqualTo (0));
+				}
+			}
+		}
+
+		[Test]
 		public void CanEnableDependenciesDump ()
 		{
 			var testcase = CreateIndividualCase (typeof (CanEnableDependenciesDump));
 			var result = Run (testcase);
 
-			var outputPath = result.OutputAssemblyPath.Parent.Combine (Tracer.DefaultDependenciesFileName);
+			var outputPath = result.OutputAssemblyPath.Parent.Combine (XmlDependencyRecorder.DefaultDependenciesFileName);
 			if (!outputPath.Exists ())
 				Assert.Fail ($"The dependency dump file is missing.  Expected it to exist at {outputPath}");
 		}
@@ -153,8 +181,7 @@ namespace Mono.Linker.Tests.TestCases
 
 		protected Guid GetMvid (NPath assemblyPath)
 		{
-			using (var assembly = AssemblyDefinition.ReadAssembly (assemblyPath))
-			{
+			using (var assembly = AssemblyDefinition.ReadAssembly (assemblyPath)) {
 				return assembly.MainModule.Mvid;
 			}
 		}
@@ -166,8 +193,7 @@ namespace Mono.Linker.Tests.TestCases
 
 		protected LinkedTestCaseResult Run (TestCase testCase)
 		{
-			TestRunner runner;
-			return Run (testCase, out runner);
+			return Run (testCase, out _);
 		}
 		
 		protected virtual LinkedTestCaseResult Run (TestCase testCase, out TestRunner runner)

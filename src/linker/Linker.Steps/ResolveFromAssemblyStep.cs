@@ -35,8 +35,8 @@ namespace Mono.Linker.Steps
 	public class ResolveFromAssemblyStep : ResolveStep
 	{
 
-		AssemblyDefinition _assembly;
-		string _file;
+		readonly AssemblyDefinition _assembly;
+		readonly string _file;
 		RootVisibility _rootVisibility;
 
 		public enum RootVisibility
@@ -63,8 +63,13 @@ namespace Mono.Linker.Steps
 			if (_assembly != null)
 				Context.Resolver.CacheAssembly (_assembly);
 
-			AssemblyDefinition assembly = _assembly ?? Context.Resolve (_file);
+			var ignoreUnresolved = Context.Resolver.IgnoreUnresolved;
+			if (_rootVisibility == RootVisibility.PublicAndFamily) {
+				Context.Resolver.IgnoreUnresolved = false;
+			}
 
+			AssemblyDefinition assembly = _assembly ?? Context.Resolve (_file);
+			Context.Resolver.IgnoreUnresolved = ignoreUnresolved;
 			if (_rootVisibility != RootVisibility.Any && HasInternalsVisibleTo (assembly)) {
 				_rootVisibility = RootVisibility.PublicAndFamilyAndAssembly;
 			}
@@ -88,8 +93,6 @@ namespace Mono.Linker.Steps
 		{
 			var action = rootVisibility == RootVisibility.Any ? AssemblyAction.Copy : AssemblyAction.Link;
 			context.SetAction (assembly, action);
-
-			context.Tracer.Push (assembly);
 
 			foreach (TypeDefinition type in assembly.MainModule.Types)
 				MarkType (context, type, rootVisibility);
@@ -127,36 +130,24 @@ namespace Mono.Linker.Steps
 
 					context.Resolve (resolvedExportedType.Scope);
 					MarkType (context, resolvedExportedType, rootVisibility);
-					context.MarkingHelpers.MarkExportedType (exported, assembly.MainModule);
+					context.MarkingHelpers.MarkExportedType (exported, assembly.MainModule, new DependencyInfo (DependencyKind.ExportedType, resolvedExportedType));
 				}
 			}
-
-			context.Tracer.Pop ();
 		}
 
 		static void MarkType (LinkContext context, TypeDefinition type, RootVisibility rootVisibility)
 		{
-			bool markType;
-			switch (rootVisibility) {
-			default:
-				markType = true;
-				break;
-
-			case RootVisibility.PublicAndFamilyAndAssembly:
-				markType = !type.IsNestedPrivate;
-				break;
-
-			case RootVisibility.PublicAndFamily:
-				markType = type.IsPublic || type.IsNestedPublic || type.IsNestedFamily || type.IsNestedFamilyOrAssembly;
-				break;
-			}
+			bool markType = rootVisibility switch {
+				RootVisibility.PublicAndFamilyAndAssembly => !type.IsNestedPrivate,
+				RootVisibility.PublicAndFamily => type.IsPublic || type.IsNestedPublic || type.IsNestedFamily || type.IsNestedFamilyOrAssembly,
+				_ => true
+			};
 
 			if (!markType) {
 				return;
 			}
 
-			context.Annotations.MarkAndPush (type);
-
+			context.Annotations.Mark (type, new DependencyInfo (DependencyKind.RootAssembly, type.Module.Assembly));
 			if (type.HasFields)
 				MarkFields (context, type.Fields, rootVisibility);
 			if (type.HasMethods)
@@ -164,42 +155,29 @@ namespace Mono.Linker.Steps
 			if (type.HasNestedTypes)
 				foreach (var nested in type.NestedTypes)
 					MarkType (context, nested, rootVisibility);
-
-			context.Tracer.Pop ();
 		}
 
 		void ProcessExecutable (AssemblyDefinition assembly)
 		{
 			Context.SetAction (assembly, AssemblyAction.Link);
 
-			Tracer.Push (assembly);
+			MethodDefinition entryPoint = assembly.EntryPoint;
+			TypeDefinition declaringType = entryPoint.DeclaringType;
+			Annotations.Mark (declaringType, new DependencyInfo (DependencyKind.RootAssembly, declaringType.Module.Assembly));
 
-			Annotations.Mark (assembly.EntryPoint.DeclaringType);
-
-			MarkMethod (Context, assembly.EntryPoint, MethodAction.Parse, RootVisibility.Any);
-
-			Tracer.Pop ();
+			MarkMethod (Context, entryPoint, MethodAction.Parse, RootVisibility.Any);
 		}
 
 		static void MarkFields (LinkContext context, Collection<FieldDefinition> fields, RootVisibility rootVisibility)
 		{
 			foreach (FieldDefinition field in fields) {
-				bool markField;
-				switch (rootVisibility) {
-				default:
-					markField = true;
-					break;
-
-				case RootVisibility.PublicAndFamily:
-					markField = field.IsPublic || field.IsFamily || field.IsFamilyOrAssembly;
-					break;
-
-				case RootVisibility.PublicAndFamilyAndAssembly:
-					markField = field.IsPublic || field.IsFamily || field.IsFamilyOrAssembly || field.IsAssembly || field.IsFamilyAndAssembly;
-					break;
-				}
+				bool markField = rootVisibility switch {
+					RootVisibility.PublicAndFamily => field.IsPublic || field.IsFamily || field.IsFamilyOrAssembly,
+					RootVisibility.PublicAndFamilyAndAssembly => field.IsPublic || field.IsFamily || field.IsFamilyOrAssembly || field.IsAssembly || field.IsFamilyAndAssembly,
+					_ => true
+				};
 				if (markField) {
-					context.Annotations.Mark (field);
+					context.Annotations.Mark (field, new DependencyInfo (DependencyKind.RootAssembly, field.Module.Assembly));
 				}
 			}
 		}
@@ -212,23 +190,14 @@ namespace Mono.Linker.Steps
 
 		static void MarkMethod (LinkContext context, MethodDefinition method, MethodAction action, RootVisibility rootVisibility)
 		{
-			bool markMethod;
-			switch (rootVisibility) {
-			default:
-				markMethod = true;
-				break;
-
-			case RootVisibility.PublicAndFamily:
-				markMethod = method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly;
-				break;
-
-			case RootVisibility.PublicAndFamilyAndAssembly:
-				markMethod = method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly || method.IsAssembly || method.IsFamilyAndAssembly;
-				break;
-			}
+			bool markMethod = rootVisibility switch {
+				RootVisibility.PublicAndFamily => method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly,
+				RootVisibility.PublicAndFamilyAndAssembly => method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly || method.IsAssembly || method.IsFamilyAndAssembly,
+				_ => true
+			};
 
 			if (markMethod) {
-				context.Annotations.Mark (method);
+				context.Annotations.Mark (method, new DependencyInfo (DependencyKind.RootAssembly, method.Module.Assembly));
 				context.Annotations.SetAction (method, action);
 			}
 		}

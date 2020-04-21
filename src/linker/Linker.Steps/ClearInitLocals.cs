@@ -1,8 +1,5 @@
 using System;
 using System.Collections.Generic;
-
-using Mono.Linker;
-using Mono.Linker.Steps;
 using Mono.Cecil;
 
 namespace Mono.Linker.Steps
@@ -13,10 +10,8 @@ namespace Mono.Linker.Steps
 
 		protected override void Process ()
 		{
-			string parameterName = "ClearInitLocalsAssemblies";
 
-			if (Context.HasParameter (parameterName)) {
-				string parameter = Context.GetParameter (parameterName);
+			if (Context.TryGetCustomData ("ClearInitLocalsAssemblies", out string parameter)) {
 				_assemblies = new HashSet<string> (parameter.Split(','), StringComparer.OrdinalIgnoreCase);
 			}
 		}
@@ -36,7 +31,8 @@ namespace Mono.Linker.Steps
 
 		protected override void ProcessAssembly (AssemblyDefinition assembly)
 		{
-			if ((_assemblies != null) && (!_assemblies.Contains (assembly.Name.Name))) {
+			if (!Context.IsOptimizationEnabled (CodeOptimizations.ClearInitLocals, assembly) &&
+				_assemblies?.Contains (assembly.Name.Name) != true) {
 				return;
 			}
 
@@ -56,7 +52,7 @@ namespace Mono.Linker.Steps
 			}
 
 			if (changed && (Annotations.GetAction (assembly) == AssemblyAction.Copy))
-					Annotations.SetAction (assembly, AssemblyAction.Save);
+				Annotations.SetAction (assembly, AssemblyAction.Save);
 		}
 	}
 }

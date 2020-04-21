@@ -1,4 +1,4 @@
-﻿//
+//
 // LinkContext.cs
 //
 // Author:
@@ -28,6 +28,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -42,10 +43,10 @@ namespace Mono.Linker {
 
 	public class LinkContext : IDisposable {
 
-		Pipeline _pipeline;
+		readonly Pipeline _pipeline;
 		AssemblyAction _coreAction;
 		AssemblyAction _userAction;
-		Dictionary<string, AssemblyAction> _actions;
+		readonly Dictionary<string, AssemblyAction> _actions;
 		string _outputDirectory;
 		readonly Dictionary<string, string> _parameters;
 		bool _linkSymbols;
@@ -53,13 +54,13 @@ namespace Mono.Linker {
 		bool _keepMembersForDebugger;
 		bool _ignoreUnresolved;
 
-		AssemblyResolver _resolver;
+		readonly AssemblyResolver _resolver;
 
-		ReaderParameters _readerParameters;
+		readonly ReaderParameters _readerParameters;
 		ISymbolReaderProvider _symbolReaderProvider;
 		ISymbolWriterProvider _symbolWriterProvider;
 
-		AnnotationStore _annotations;
+		readonly AnnotationStore _annotations;
 
 		public Pipeline Pipeline {
 			get { return _pipeline; }
@@ -117,6 +118,15 @@ namespace Mono.Linker {
 
 		public bool StripResources { get; set; }
 
+		public List<string> Substitutions { get; private set; }
+
+		public List<string> AttributeDefinitions { get; private set; }
+
+		public List<PInvokeInfo> PInvokes { get; private set; }
+
+		public string PInvokesListFile;
+
+
 		public System.Collections.IDictionary Actions {
 			get { return _actions; }
 		}
@@ -141,7 +151,7 @@ namespace Mono.Linker {
 
 		public bool LogMessages { get; set; }
 
-		public ILogger Logger { get; set; } = new ConsoleLogger ();
+		public ILogger Logger { private get; set; } = new ConsoleLogger ();
 
 		public MarkingHelpers MarkingHelpers { get; private set; }
 
@@ -149,9 +159,11 @@ namespace Mono.Linker {
 
 		public Tracer Tracer { get; private set; }
 
-		public string[] ExcludedFeatures { get; set; }
+		public IReflectionPatternRecorder ReflectionPatternRecorder { get; set; }
 
-		public CodeOptimizations DisabledOptimizations { get; set; }
+		public string [] ExcludedFeatures { get; set; }
+
+		public CodeOptimizationsSettings Optimizations { get; set; }
 
 		public bool AddReflectionAnnotations { get; set; }
 
@@ -176,7 +188,7 @@ namespace Mono.Linker {
 			_resolver = resolver;
 			_resolver.Context = this;
 			_actions = new Dictionary<string, AssemblyAction> ();
-			_parameters = new Dictionary<string, string> ();
+			_parameters = new Dictionary<string, string> (StringComparer.Ordinal);
 			_readerParameters = readerParameters;
 			
 			SymbolReaderProvider = new DefaultSymbolReaderProvider (false);
@@ -187,12 +199,45 @@ namespace Mono.Linker {
 			_annotations = factory.CreateAnnotationStore (this);
 			MarkingHelpers = factory.CreateMarkingHelpers (this);
 			Tracer = factory.CreateTracer (this);
+			ReflectionPatternRecorder = new LoggingReflectionPatternRecorder (this);
 			MarkedKnownMembers = new KnownMembers ();
 			StripResources = true;
+			PInvokes = new List<PInvokeInfo> ();
 
 			// See https://github.com/mono/linker/issues/612
-			DisabledOptimizations |= CodeOptimizations.UnreachableBodies;
-			DisabledOptimizations |= CodeOptimizations.ClearInitLocals;
+			const CodeOptimizations defaultOptimizations =
+				CodeOptimizations.BeforeFieldInit |
+				CodeOptimizations.OverrideRemoval |
+				CodeOptimizations.UnusedInterfaces |
+				CodeOptimizations.IPConstantPropagation;
+
+			Optimizations = new CodeOptimizationsSettings (defaultOptimizations);
+		}
+
+		public void AddSubstitutionFile (string file)
+		{
+			if (Substitutions == null) {
+				Substitutions = new List<string> { file };
+				return;
+			}
+
+			if (Substitutions.Contains (file))
+				return;
+
+			Substitutions.Add (file);
+		}
+
+		public void AddAttributeDefinitionFile (string file)
+		{
+			if (AttributeDefinitions == null) {
+				AttributeDefinitions = new List<string> { file };
+				return;
+			}
+
+			if (AttributeDefinitions.Contains (file))
+				return;
+
+			AttributeDefinitions.Add (file);
 		}
 
 		public TypeDefinition GetType (string fullName)
@@ -302,8 +347,8 @@ namespace Mono.Linker {
 		static AssemblyNameReference GetReference (IMetadataScope scope)
 		{
 			AssemblyNameReference reference;
-			if (scope is ModuleDefinition) {
-				AssemblyDefinition asm = ((ModuleDefinition) scope).Assembly;
+			if (scope is ModuleDefinition moduleDefinition) {
+				AssemblyDefinition asm = moduleDefinition.Assembly;
 				reference = asm.Name;
 			} else
 				reference = (AssemblyNameReference) scope;
@@ -323,11 +368,9 @@ namespace Mono.Linker {
 
 		protected void SetDefaultAction (AssemblyDefinition assembly)
 		{
-			AssemblyAction action;
-
 			AssemblyNameDefinition name = assembly.Name;
 
-			if (_actions.TryGetValue (name.Name, out action)) {
+			if (_actions.TryGetValue (name.Name, out AssemblyAction action)) {
 			} else if (IsCore (name)) {
 				action = _coreAction;
 			} else {
@@ -367,21 +410,27 @@ namespace Mono.Linker {
 			return asms;
 		}
 
-		public void SetParameter (string key, string value)
+		public AssemblyDefinition GetLoadedAssembly (string name)
+		{
+			if (_resolver.AssemblyCache.TryGetValue (name, out var ad))
+				return ad;
+
+			return null;
+		}
+
+		public void SetCustomData (string key, string value)
 		{
 			_parameters [key] = value;
 		}
 
-		public bool HasParameter (string key)
+		public bool HasCustomData (string key)
 		{
 			return _parameters.ContainsKey (key);
 		}
 
-		public string GetParameter (string key)
+		public bool TryGetCustomData (string key, out string value)
 		{
-			string val = null;
-			_parameters.TryGetValue (key, out val);
-			return val;
+			return _parameters.TryGetValue (key, out value);
 		}
 
 		public void Dispose ()
@@ -394,20 +443,91 @@ namespace Mono.Linker {
 			return ExcludedFeatures != null && Array.IndexOf (ExcludedFeatures, featureName) >= 0;
 		}
 
-		public bool IsOptimizationEnabled (CodeOptimizations optimization)
+		public bool IsOptimizationEnabled (CodeOptimizations optimization, MemberReference context)
 		{
-			return (DisabledOptimizations & optimization) == 0;
+			return Optimizations.IsEnabled (optimization, context?.Module.Assembly);
 		}
 
-		public void LogMessage (string message, params object[] values)
+		public bool IsOptimizationEnabled (CodeOptimizations optimization, AssemblyDefinition context)
 		{
-			LogMessage (MessageImportance.Normal, message, values);
+			return Optimizations.IsEnabled (optimization, context);
 		}
 
-		public void LogMessage (MessageImportance importance, string message, params object [] values)
+		public void LogMessage (string message)
+		{
+			LogMessage (MessageImportance.Normal, message);
+		}
+
+		public void LogMessage (MessageImportance importance, string message)
 		{
 			if (LogMessages && Logger != null)
-				Logger.LogMessage (importance, message, values);
+				Logger.LogMessage (importance, "{0}", message);
+		}
+
+		public void LogMessage (MessageContainer message)
+		{
+			if (LogMessages)
+				Logger?.LogMessage (message);
+		}
+	}
+
+	public class CodeOptimizationsSettings
+	{
+		readonly Dictionary<string, CodeOptimizations> perAssembly = new Dictionary<string, CodeOptimizations> ();
+
+		public CodeOptimizationsSettings (CodeOptimizations globalOptimizations)
+		{
+			Global = globalOptimizations;
+		}
+
+		public CodeOptimizations Global { get; set; }
+
+		internal bool IsEnabled (CodeOptimizations optimizations, AssemblyDefinition context)
+		{
+			return IsEnabled (optimizations, context?.Name.Name);
+		}
+
+		public bool IsEnabled (CodeOptimizations optimizations, string assemblyName)
+		{
+			// Only one bit is set
+			Debug.Assert (optimizations != 0 && (optimizations & (optimizations - 1)) == 0);
+
+			if (perAssembly.Count > 0 &&
+				perAssembly.TryGetValue (assemblyName, out CodeOptimizations assembly)) {
+				return (assembly & optimizations) != 0;
+			}
+
+			return (Global & optimizations) != 0;
+		}
+
+		public void Enable (CodeOptimizations optimizations, string assemblyContext = null)
+		{
+			if (assemblyContext == null) {
+				Global |= optimizations;
+				return;
+			}
+
+			if (!perAssembly.ContainsKey (assemblyContext)) {
+				perAssembly.Add (assemblyContext, optimizations);
+				return;
+			}
+
+			perAssembly [assemblyContext] |= optimizations;
+		}
+
+		public void Disable (CodeOptimizations optimizations, string assemblyContext = null)
+		{
+			if (assemblyContext == null) {
+				Global &= ~optimizations;
+				return;
+			}
+
+			if (!perAssembly.ContainsKey (assemblyContext)) {
+				perAssembly.Add (assemblyContext, 0);
+				return;
+			}
+
+			perAssembly [assemblyContext] &= ~optimizations;
 		}
 	}
 
@@ -438,5 +558,15 @@ namespace Mono.Linker {
 		/// Option to remove .interfaceimpl for interface types that are not used
 		/// </summary>
 		UnusedInterfaces = 1 << 4,
+
+		/// <summary>
+		/// Option to do interprocedural constant propagation on return values
+		/// </summary>
+		IPConstantPropagation = 1 << 5,
+
+		/// <summary>
+		/// Devirtualizes methods and seals types
+		/// </summary>
+		Sealer = 1 << 6
 	}
 }

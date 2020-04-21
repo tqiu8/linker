@@ -17,5 +17,9 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 		public bool StripResources;
 
 		public List<KeyValuePair<string, string[]>> AdditionalArguments = new List<KeyValuePair<string, string[]>> ();
+
+		public List<string> Substitutions = new List<string> ();
+
+		public List<string> AttributeDefinitions = new List<string> ();
 	}
 }

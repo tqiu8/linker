@@ -18,7 +18,7 @@ necessary for the source program to run.
 
 The command:
 
-`illinker -a Program.exe`
+`illink -a Program.exe`
 
 will use the assembly Program.exe as a source. That means that the linker will
 walk through all the methods of Program.exe to generate only what is necessary
@@ -28,7 +28,7 @@ for this assembly to run.
 
 The command:
 
-`illinker -x desc.xml`
+`illink -x desc.xml`
 
 will use the XML descriptor as a source. That means that the linker will
 use this file to decide what to link in a set of assemblies. The format of the
@@ -38,7 +38,7 @@ descriptors is described further on in this document.
 
 The command:
 
-`illinker -i assembly.info`
+`illink -i assembly.info`
 
 will use a file produced by `mono-api-info` as a source. The linker will use
 this file to link only what is necessary to match the public API defined in
@@ -61,11 +61,11 @@ The linker can do the following things:
 
 You can specify an action per assembly like this:
 
-`illinker -p link Foo`
+`illink -p link Foo`
 
 or
 
-`illinker -p skip System.Windows.Forms`
+`illink -p skip System.Windows.Forms`
 
 Or you can specify what to do for the core assemblies.
 
@@ -82,7 +82,7 @@ By default, the linker will create an `output` directory in the current
 directory where it will emit the linked files, to avoid erasing source
 assemblies. You can specify the output directory with the option:
 
-`-o output_directory`
+`-out PATH`
 
 If you specify the directory `.', please ensure that you won't write over
 important assemblies of yours.
@@ -94,7 +94,43 @@ and `bin`. You can specify
 
 Example:
 
-`illinker -d ../../libs -a program.exe`
+`illink -d ../../libs -a program.exe`
+
+
+### Using custom substitutions
+
+An option called `--substitutions` allows external customization of any
+method or field for assemblies which are linked. The syntax used for that is based on
+XML files. Using substitutions with `ipconstprop` optimization (enabled by
+default) can help reduce output size as any dependencies under conditional
+logic which will be evaluated as unreachable will be removed.
+
+An example of a substitution XML file
+
+```xml
+<linker>
+  <assembly fullname="test">
+    <type fullname="UserCode.Substitutions.Playground">
+      <method signature="System.String TestMethod()" body="stub" value="abcd">
+      </method>
+      <field name="MyNumericField" value="5" initialize="true">
+      </field>	    
+    </type>
+  </assembly>
+</linker>
+```
+
+The `value` attribute is optional and only required when the method stub should not
+return the default value or no-op for `void` like methods.
+
+Addition to `stub` modification also removal of the implementation body is supported by
+using `remove` mode the method when the method is marked. This is useful when the conditional logic
+cannot be evaluated by the linker and the method will be marked but never actually reached.
+
+A similar mechanism is available for fields where a field can be initialized with a specific
+value and override the existing behaviour. The rule can also apply to static fields which
+if set to default value without explicit `initialize` setting could help to elide whole
+explicit static constructor.
 
 ### Adding custom steps to the linker.
 
@@ -123,19 +159,29 @@ namespace Foo {
 
 That is compiled against the linker to `Foo.dll` assembly.
 
-You can ask the linker to add it at the end of the pipeline:
+To tell the linker where this assembly is located, you have to append its full path after a comma which separates the custom step's name from the custom assembly's path:
 
-`illinker -s Foo.FooStep,Foo -a program.exe`
+`--custom-step [custom step],[custom assembly]`
+
+You can now ask the linker to add the custom step at the end of the pipeline:
+
+`illink --custom-step Foo.FooStep,D:\Bar\Foo.dll`
 
 Or you can ask the linker to add it after a specific step:
 
-`illinker -s MarkStep:Foo.FooStep,Foo -a program.exe`
+`illink --custom-step +MarkStep:Foo.FooStep,D:\Bar\Foo.dll -a program.exe`
 
 Or before a specific step:
 
-`illinker -s Foo.FooStep,Foo:MarkStep`
+`illink --custom-step -MarkStep:Foo.FooStep,D:\Bar\Foo.dll -a program.exe`
 
-## Mono specific options
+### Passing data to custom steps
+
+For advanced custom steps which needs interaction with external values (for example for the custom step configuration), there is `--custom-data KEY=VALUE` option. The key
+data are stored inside a linker context and can be obtained in the custom step using `context.TryGetCustomData` method. Each key can have a simple value assigned which means
+if you need to store multiple values for the same key use custom separator for the values and pass them as one key-value pair.
+
+## MonoLinker specific options
 
 ### The i18n Assemblies
 
@@ -150,16 +196,16 @@ Mono has a few assemblies which contains everything region specific:
 By default, they will all be copied to the output directory. But you can
 specify which one you want using the command:
 
-`illinker -l choice`
+`illink -l choice`
 
 Where choice can either be: none, all, cjk, mideast, other, rare or west. You can
 combine the values with a comma.
 
 Example:
 
-`illinker -a assembly -l mideast,cjk`
+`illink -a assembly -l mideast,cjk`
 
-## Syntax of xml descriptor
+## Syntax of XML Descriptor
 
 Here is an example that shows all the possibilities of this format:
 
@@ -196,6 +242,122 @@ The type Gazonk will be linked, as well as its constructor taking a string as a
 parameter, and it's _blah field.
 
 You can have multiple assembly nodes.
+
+More comprehensive example is bellow which show more advanced configuration options.
+
+```xml
+<linker>
+  <!--
+  Preserve types and members in an assembly
+  -->
+  <assembly fullname="Assembly1">
+    <!--Preserve an entire type-->
+    <type fullname="Assembly1.A" preserve="all"/>
+    <!--No "preserve" attribute and no members specified means preserve all members-->
+    <type fullname="Assembly1.B"/>
+    <!--Preserve all fields on a type-->
+    <type fullname="Assembly1.C" preserve="fields"/>
+    <!--Preserve all methods on a type-->
+    <type fullname="Assembly1.D" preserve="methods"/>
+    <!--Preserve the type only-->
+    <type fullname="Assembly1.E" preserve="nothing"/>
+    <!--Preserving only specific members of a type-->
+    <type fullname="Assembly1.F">
+      <!--
+      Fields
+      -->
+      <field signature="System.Int32 field1" />
+      <!--Preserve a field by name rather than signature-->
+      <field name="field2" />
+      <!--
+      Methods
+      -->
+      <method signature="System.Void Method1()" />
+      <!--Preserve a method with parameters-->
+      <method signature="System.Void Method2(System.Int32,System.String)" />
+      <!--Preserve a method by name rather than signature-->
+      <method name="Method3" />
+      <!--
+      Properties
+      -->
+      <!--Preserve a property, it's backing field (if present), getter, and setter methods-->
+      <property signature="System.Int32 Property1" />
+      <property signature="System.Int32 Property2" accessors="all" />
+      <!--Preserve a property, it's backing field (if present), and getter method-->
+      <property signature="System.Int32 Property3" accessors="get" />
+      <!--Preserve a property, it's backing field (if present), and setter method-->
+      <property signature="System.Int32 Property4" accessors="set" />
+      <!--Preserve a property by name rather than signature-->
+      <property name="Property5" />
+      <!--
+      Events
+      -->
+      <!--Preserve an event, it's backing field (if present), add, and remove methods-->
+      <event signature="System.EventHandler Event1" />
+      <!--Preserve an event by name rather than signature-->
+      <event name="Event2" />
+    </type>
+    <!--Examples with generics-->
+    <type fullname="Assembly1.G`1">
+      <!--Preserve a field with generics in the signature-->
+      <field signature="System.Collections.Generic.List`1&lt;System.Int32&gt; field1" />
+      <field signature="System.Collections.Generic.List`1&lt;T&gt; field2" />
+      <!--Preserve a method with generics in the signature-->
+      <method signature="System.Void Method1(System.Collections.Generic.List`1&lt;System.Int32&gt;)" />
+      <!--Preserve an event with generics in the signature-->
+      <event signature="System.EventHandler`1&lt;System.EventArgs&gt; Event1" />
+    </type>
+    <!--Preserve a nested type-->
+    <type fullname="Assembly1.H/Nested" preserve="all"/>
+    <!--Preserve all fields of a type if the type is used.  If the type is not used it will be removed-->
+    <type fullname="Assembly1.I" preserve="fields" required="0"/>
+    <!--Preserve all methods of a type if the type is used.  If the type is not used it will be removed-->
+    <type fullname="Assembly1.J" preserve="methods" required="0"/>
+    <!--Preserve all types in a namespace-->
+    <type fullname="Assembly1.SomeNamespace*" />
+    <!--Preserve all types with a common prefix in their name-->
+    <type fullname="Prefix*" />
+  </assembly>
+  <!--
+  Preserve an entire assembly
+  -->
+  <assembly fullname="Assembly2" preserve="all"/>
+  <!--No "preserve" attribute and no types specified means preserve all-->
+  <assembly fullname="Assembly3"/>
+  <!--
+  Fully qualified assembly name
+  -->
+  <assembly fullname="Assembly4, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+    <type fullname="Assembly4.Foo" preserve="all"/>
+  </assembly>
+</linker>
+```
+
+## Syntax of supplementary custom attribute annotations
+
+Linker supports specifying a JSON file that has a set of custom attributes that the linker will pretend are applied to members in the input assemblies.
+
+The structure is:
+
+```json
+{
+  "[assembly-name]": {
+    "[namespace-name]": {
+      "[type-name]": {
+        "[field-or-property-name]": {
+          "[attribute-name]": "[attribute-value]"
+        },
+
+        "[method-name]([method-signature])": {
+          "[parameter-name]": {
+            "[attribute-name]": "[attribute-value]"
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 # Inside the linker
 
@@ -294,10 +456,3 @@ and if it's link, it will save the modified assembly to the output directory.
 # Reporting a bug
 
 If you face a bug in the linker, please report it using GitHub issues
-
-# Mailing lists
-
-You can ask questions about the linker of the cecil Google Group:
-
-http://groups.google.com/group/mono-cecil
-

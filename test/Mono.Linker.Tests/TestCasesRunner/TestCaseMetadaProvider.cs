@@ -25,7 +25,7 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 				throw new InvalidOperationException ($"Could not find the type definition for {_testCase.Name} in {_testCase.SourceFile}");
 		}
 
-		public virtual TestCaseLinkerOptions GetLinkerOptions ()
+		public virtual TestCaseLinkerOptions GetLinkerOptions (NPath inputPath)
 		{
 			var tclo = new TestCaseLinkerOptions {
 				Il8n = GetOptionAttributeValue (nameof (Il8nAttribute), "none"),
@@ -36,7 +36,7 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 				CoreAssembliesAction = GetOptionAttributeValue<string> (nameof (SetupLinkerCoreActionAttribute), null),
 				UserAssembliesAction = GetOptionAttributeValue<string> (nameof (SetupLinkerUserActionAttribute), null),
 				SkipUnresolved = GetOptionAttributeValue (nameof (SkipUnresolvedAttribute), false),
-				StripResources = GetOptionAttributeValue (nameof (StripResourcesAttribute), true)
+				StripResources = GetOptionAttributeValue (nameof (StripResourcesAttribute), true),
 			};
 
 			foreach (var assemblyAction in _testCaseTypeDefinition.CustomAttributes.Where (attr => attr.AttributeType.Name == nameof (SetupLinkerActionAttribute)))
@@ -45,10 +45,32 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 				tclo.AssembliesAction.Add (new KeyValuePair<string, string> ((string)ca [0].Value, (string)ca [1].Value));
 			}
 
+			foreach (var subsFile in _testCaseTypeDefinition.CustomAttributes.Where (attr => attr.AttributeType.Name == nameof (SetupLinkerSubstitutionFileAttribute))) {
+				var ca = subsFile.ConstructorArguments;
+				var file = (string)ca [0].Value;
+				tclo.Substitutions.Add (Path.Combine (inputPath, file));
+			}
+
+			foreach (var subsFile in _testCaseTypeDefinition.CustomAttributes.Where (attr => attr.AttributeType.Name == nameof (SetupLinkerAttributeDefinitionsFile))) {
+				var ca = subsFile.ConstructorArguments;
+				var file = (string)ca [0].Value;
+				tclo.AttributeDefinitions.Add (Path.Combine (inputPath, file));
+			}
+
 			foreach (var additionalArgumentAttr in _testCaseTypeDefinition.CustomAttributes.Where (attr => attr.AttributeType.Name == nameof (SetupLinkerArgumentAttribute)))
 			{
 				var ca = additionalArgumentAttr.ConstructorArguments;
 				var values = ((CustomAttributeArgument [])ca [1].Value)?.Select (arg => arg.Value.ToString ()).ToArray ();
+				// Since custom attribute arguments need to be constant expressions, we need to add
+				// the path to the temp directory (where the custom assembly is located) here.
+				if ((string)ca [0].Value == "--custom-step") {
+					int pos = values [0].IndexOf (",");
+					if (pos != -1) {
+						string custom_assembly_path = values [0].Substring (pos + 1);
+						if (!Path.IsPathRooted (custom_assembly_path))
+							values [0] = values [0].Substring (0, pos + 1) + Path.Combine (inputPath, custom_assembly_path);
+					}
+				}
 				tclo.AdditionalArguments.Add (new KeyValuePair<string, string []> ((string)ca [0].Value, values));
 			}
 
@@ -58,6 +80,44 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 			}
 
 			return tclo;
+		}
+
+		public virtual void CustomizeLinker (LinkerDriver linker, LinkerCustomizations customizations)
+		{
+			if (_testCaseTypeDefinition.CustomAttributes.Any (attr =>
+				attr.AttributeType.Name == nameof (DependencyRecordedAttribute))) {
+				customizations.DependencyRecorder = new TestDependencyRecorder ();
+				customizations.CustomizeContext += context => {
+					context.Tracer.AddRecorder (customizations.DependencyRecorder);
+				};
+			}
+
+			if (ValidatesReflectionAccessPatterns(_testCaseTypeDefinition)) {
+				customizations.ReflectionPatternRecorder = new TestReflectionPatternRecorder ();
+				customizations.CustomizeContext += context => {
+					context.ReflectionPatternRecorder = customizations.ReflectionPatternRecorder;
+				};
+			}
+		}
+
+		private bool ValidatesReflectionAccessPatterns (TypeDefinition testCaseTypeDefinition)
+		{
+			if (testCaseTypeDefinition.HasNestedTypes) {
+				var nestedTypes = new Queue<TypeDefinition> (testCaseTypeDefinition.NestedTypes.ToList ());
+				while (nestedTypes.Count > 0) {
+					if (ValidatesReflectionAccessPatterns (nestedTypes.Dequeue ()))
+						return true;
+				}
+			}
+
+			if (testCaseTypeDefinition.CustomAttributes.Any (attr =>
+					attr.AttributeType.Name == nameof (VerifyAllReflectionAccessPatternsAreValidatedAttribute))
+				|| testCaseTypeDefinition.AllMethods ().Any (method => method.CustomAttributes.Any (attr =>
+					attr.AttributeType.Name == nameof (RecognizedReflectionAccessPatternAttribute) ||
+					attr.AttributeType.Name == nameof (UnrecognizedReflectionAccessPatternAttribute))))
+				return true;
+
+			return false;
 		}
 
 #if NETCOREAPP
@@ -133,6 +193,20 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 		{
 			return _testCaseTypeDefinition.CustomAttributes
 				.Where (attr => attr.AttributeType.Name == nameof (SetupLinkerResponseFileAttribute))
+				.Select (GetSourceAndRelativeDestinationValue);
+		}
+
+		public virtual IEnumerable<SourceAndDestinationPair> GetSubstitutionFiles ()
+		{
+			return _testCaseTypeDefinition.CustomAttributes
+				.Where (attr => attr.AttributeType.Name == nameof (SetupLinkerSubstitutionFileAttribute))
+				.Select (GetSourceAndRelativeDestinationValue);
+		}
+
+		public virtual IEnumerable<SourceAndDestinationPair> GetAttributeDefinitionFiles ()
+		{
+			return _testCaseTypeDefinition.CustomAttributes
+				.Where (attr => attr.AttributeType.Name == nameof (SetupLinkerAttributeDefinitionsFile))
 				.Select (GetSourceAndRelativeDestinationValue);
 		}
 
@@ -272,8 +346,7 @@ namespace Mono.Linker.Tests.TestCasesRunner {
 
 		protected virtual NPath SourceFileForAttributeArgumentValue (object value)
 		{
-			var valueAsTypeRef = value as TypeReference;
-			if (valueAsTypeRef != null) {
+			if (value is TypeReference valueAsTypeRef) {
 				// Use the parent type for locating the source file
 				var parentType = ParentMostType (valueAsTypeRef);
 				var pathRelativeToAssembly = $"{parentType.FullName.Substring (parentType.Module.Name.Length - 3).Replace ('.', '/')}.cs".ToNPath ();

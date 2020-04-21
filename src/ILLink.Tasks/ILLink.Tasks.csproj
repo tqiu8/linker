@@ -1,27 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <Import Project="$(MSBuildThisFileDirectory)../../eng/Versions.props" Condition=" '$(ArcadeBuild)' != 'true' " />
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp2.0;net472</TargetFrameworks>
-    <TargetFrameworks Condition=" '$(OS)' != 'Windows_NT' ">netcoreapp2.0</TargetFrameworks>
+    <!-- Keep these in sync with _ILLinkTasksTFM in Sdk.props. -->
+    <!-- Keep the netcoreapp TFM in sync with the Mono.Linker.csproj condition below. -->
+    <TargetFrameworks>netcoreapp3.0;net472</TargetFrameworks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <BaseOutputPath>bin/</BaseOutputPath>
-    <PackageOutputPath>$(BaseOutputPath)nupkgs</PackageOutputPath>
-    <IsPackable>true</IsPackable>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Description>MSBuild tasks for running the IL Linker</Description>
-    <Authors>$(AssemblyName)</Authors>
-    <!-- Don't include the build output. Instead, we want to include
-         the TargetFramework-specific publish output. -->
-    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>true</IsPackable>
+    <PackageId>Microsoft.NET.ILLink.Tasks</PackageId>
     <!-- We want to package the tasks package together with its
          transitive dependencies and the linker, without marking them
-         as dependencies in the tasks package.
-
-         Pack doesn't support including project references
-         (https://github.com/NuGet/Home/issues/3891), so we work
-         around this by explicitly including the publish output in the
-         package. -->
-    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_LayoutPackage</TargetsForTfmSpecificContentInPackage>
+         as dependencies in the tasks package. -->
+    <IncludePublishOutput>true</IncludePublishOutput>
+    <!-- Include deps.json and runtimeconfig.json since we run illink.dll as a separate process. -->
+    <IncludeJsonFilesInPackage>true</IncludeJsonFilesInPackage>
+    <BuildOutputTargetFolder>tools</BuildOutputTargetFolder>
+    <!-- Recommended by arcade for tools projects. generates an assembly version that includes patch number derived from date and build revision -->
+    <AutoGenerateAssemblyVersion>true</AutoGenerateAssemblyVersion>
+    <!-- Place linker and cecil alongside ILLink.Tasks in the output, for integration tests. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,66 +37,25 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="ILLink.Tasks.targets">
-      <PackagePath>build</PackagePath>
-    </Content>
     <Content Include="Sdk/Sdk.props">
       <PackagePath>Sdk</PackagePath>
     </Content>
   </ItemGroup>
 
-  <Target Name="_LayoutPackage">
-
-    <PropertyGroup>
-      <PublishDir>$(BaseOutputPath)$(TargetFramework)</PublishDir>
-    </PropertyGroup>
-
-    <ItemGroup>
-      <ProjectsToPublish Include="$(MSBuildProjectFile)">
-        <AdditionalProperties>TargetFramework=$(TargetFramework);PublishDir=$(PublishDir)</AdditionalProperties>
-      </ProjectsToPublish>
-    </ItemGroup>
-
-    <!-- Clean the publish directory in case there are any left-over
-         artifacts (publish does not work incrementally). -->
-    <ItemGroup>
-      <_FilesToDelete Remove="@(_FilesToDelete)" />
-      <_FilesToDelete Include="$(PublishDir)/*.dll" />
-      <_FilesToDelete Include="$(PublishDir)/*.json" />
-    </ItemGroup>
-    <Delete Files="@(_FilesToDelete)" />
-
-    <MSBuild Projects="@(ProjectsToPublish)" Targets="Publish" />
-    <ItemGroup>
-      <TfmSpecificPackageFile Include="$(PublishDir)/*.dll" PackagePath="tools\$(TargetFramework)" />
-      <TfmSpecificPackageFile Include="$(PublishDir)/*.json" PackagePath="tools\$(TargetFramework)" />
-    </ItemGroup>
-
-  </Target>
-
   <ItemGroup>
-    <ProjectReference Include="../linker/Mono.Linker.csproj"
-                      PrivateAssets="All"
-                      Condition=" '$(TargetFramework)' == 'netcoreapp2.0' " />
-    <ProjectReference Include="../../external/cecil/Mono.Cecil.csproj"
-                      PrivateAssets="All" />
+    <ProjectReference Include="../linker/Mono.Linker.csproj" PrivateAssets="All" Condition=" '$(TargetFramework)' == 'netcoreapp3.0' " />
+    <PackageReference Condition="'$(UseCecilPackage)' == 'true'" Include="Mono.Cecil" Version="$(MonoCecilVersion)" PrivateAssets="All" Publish="True" />
+    <ProjectReference Condition="'$(UseCecilPackage)' != 'true'" Include="../../external/cecil/Mono.Cecil.csproj" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>
-
     <!-- We use private assets for the Microsoft.Build packages to
          prevent them from being published with the tasks dll, because
          these are already a part of the SDK. -->
-    <PackageReference Include="Microsoft.Build.Framework" Version="$(MicrosoftBuildFrameworkVersion)"
-                      PrivateAssets="All"
-                      ExcludeAssets="Runtime" />
-    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="$(MicrosoftBuildUtilitiesCoreVersion)"
-                      PrivateAssets="All"
-                      ExcludeAssets="Runtime" />
-    <PackageReference Include="System.Reflection.Metadata" Version="$(SystemReflectionMetadataVersion)"
-                      Condition=" '$(TargetFramework)' == 'net472' "
-                      PrivateAssets="All"
-                      Publish="True" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="$(MicrosoftBuildFrameworkVersion)" PrivateAssets="All" ExcludeAssets="Runtime" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="$(MicrosoftBuildUtilitiesCoreVersion)" PrivateAssets="All" ExcludeAssets="Runtime" />
+    <PackageReference Include="System.Reflection.Metadata" Version="$(SystemReflectionMetadataVersion)" Condition=" '$(TargetFramework)' == 'net472' " PrivateAssets="All" Publish="True" />
 
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="All" Version="1.0.0" />
   </ItemGroup>
 </Project>

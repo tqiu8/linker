@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using System.Runtime.CompilerServices;
 using System.IO;
+using Mono.Linker.Tests.Extensions;
 using Mono.Linker.Tests.TestCasesRunner;
 
 namespace Mono.Linker.Tests.TestCases
@@ -141,12 +142,53 @@ namespace Mono.Linker.Tests.TestCases
 			return NUnitCasesBySuiteName ("CodegenAnnotation");
 		}
 
+		public static IEnumerable<TestCaseData> UnreachableBlockTests ()
+		{
+			return NUnitCasesBySuiteName ("UnreachableBlock");
+		}
+
+		public static IEnumerable<TestCaseData> SealerTests ()
+		{
+			return NUnitCasesBySuiteName ("Sealer");
+		}
+
+		public static IEnumerable<TestCaseData> SubstitutionsTests ()
+		{
+			return NUnitCasesBySuiteName ("Substitutions");
+		}
+
+		public static IEnumerable<TestCaseData> TracingTests ()
+		{
+			return NUnitCasesBySuiteName ("Tracing");
+		}
+
+
+		public static IEnumerable<TestCaseData> DataFlowTests()
+		{
+			return NUnitCasesBySuiteName("DataFlow");
+		}
+
+		public static IEnumerable<TestCaseData> LoggingTests ()
+		{
+			return NUnitCasesBySuiteName ("Logging");
+		}
+
+		public static IEnumerable<TestCaseData> ExtensibilityTests ()
+		{
+			return NUnitCasesBySuiteName ("Extensibility");
+		}
+
 		public static TestCaseCollector CreateCollector ()
 		{
-			string rootSourceDirectory;
-			string testCaseAssemblyPath;
-			GetDirectoryPaths (out rootSourceDirectory, out testCaseAssemblyPath);
+			GetDirectoryPaths (out string rootSourceDirectory, out string testCaseAssemblyPath);
 			return new TestCaseCollector (rootSourceDirectory, testCaseAssemblyPath);
+		}
+
+		public static NPath TestCasesRootDirectory {
+			get {
+				GetDirectoryPaths (out string rootSourceDirectory, out string _);
+				return rootSourceDirectory.ToNPath ();
+			}
 		}
 
 		static IEnumerable<TestCase> AllCases ()
@@ -178,18 +220,10 @@ namespace Mono.Linker.Tests.TestCases
 		static void GetDirectoryPaths(out string rootSourceDirectory, out string testCaseAssemblyPath, [CallerFilePath] string thisFile = null)
 		{
 
-#if ILLINK
-#if DEBUG
-			var configDirectoryName = "illink_Debug";
-#else
-			var configDirectoryName = "illink_Release";
-#endif
-#else
 #if DEBUG
 			var configDirectoryName = "Debug";
 #else
 			var configDirectoryName = "Release";
-#endif
 #endif
 
 #if NETCOREAPP3_0
@@ -203,18 +237,11 @@ namespace Mono.Linker.Tests.TestCases
 #if ILLINK
 			// Deterministic builds sanitize source paths, so CallerFilePathAttribute gives an incorrect path.
 			// Instead, get the testcase dll based on the working directory of the test runner.
-#if ARCADE
+
 			// working directory is artifacts/bin/Mono.Linker.Tests/<config>/<tfm>
 			var artifactsBinDir = Path.Combine (Directory.GetCurrentDirectory (), "..", "..", "..");
 			rootSourceDirectory = Path.GetFullPath (Path.Combine (artifactsBinDir, "..", "..", "test", "Mono.Linker.Tests.Cases"));
 			testCaseAssemblyPath = Path.GetFullPath (Path.Combine (artifactsBinDir, "Mono.Linker.Tests.Cases", configDirectoryName, tfm, "Mono.Linker.Tests.Cases.dll"));
-#else
-			// working directory is test/Mono.Linker.Tests/bin/<config>/<tfm>
-			var testDir = Path.Combine (Directory.GetCurrentDirectory (), "..", "..", "..", "..");
-			rootSourceDirectory = Path.GetFullPath (Path.Combine (testDir, "Mono.Linker.Tests.Cases"));
-			testCaseAssemblyPath = Path.GetFullPath (Path.Combine (rootSourceDirectory, "bin", configDirectoryName, tfm, "Mono.Linker.Tests.Cases.dll"));
-#endif // ARCADE
-
 #else
 			var thisDirectory = Path.GetDirectoryName (thisFile);
 			rootSourceDirectory = Path.GetFullPath (Path.Combine (thisDirectory, "..", "..", "Mono.Linker.Tests.Cases"));

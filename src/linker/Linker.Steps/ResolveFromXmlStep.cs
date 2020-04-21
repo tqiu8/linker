@@ -57,10 +57,10 @@ namespace Mono.Linker.Steps {
 		static readonly string[] _accessorsAll = new string[] { "all" };
 		static readonly char[] _accessorsSep = new char[] { ';' };
 
-		XPathDocument _document;
-		string _xmlDocumentLocation;
-		string _resourceName;
-		AssemblyDefinition _resourceAssembly;
+		readonly XPathDocument _document;
+		readonly string _xmlDocumentLocation;
+		readonly string _resourceName;
+		readonly AssemblyDefinition _resourceAssembly;
 
 		public ResolveFromXmlStep (XPathDocument document, string xmlDocumentLocation = "<unspecified>")
 		{
@@ -74,11 +74,8 @@ namespace Mono.Linker.Steps {
 			if (string.IsNullOrEmpty (resourceName))
 				throw new ArgumentNullException (nameof (resourceName));
 
-			if (resourceAssembly == null)
-				throw new ArgumentNullException (nameof (resourceAssembly));
-
 			_resourceName = resourceName;
-			_resourceAssembly = resourceAssembly;
+			_resourceAssembly = resourceAssembly ?? throw new ArgumentNullException (nameof (resourceAssembly));
 		}
 
 		protected override void Process ()
@@ -114,7 +111,6 @@ namespace Mono.Linker.Steps {
 			if (IsExcluded (iterator.Current))
 				return;
 
-			Tracer.Push (assembly);
 			if (GetTypePreserve (iterator.Current) == TypePreserve.All) {
 				foreach (var type in assembly.MainModule.Types)
 					MarkAndPreserveAll (type);
@@ -122,7 +118,6 @@ namespace Mono.Linker.Steps {
 				ProcessTypes (assembly, iterator.Current.SelectChildren ("type", _ns));
 				ProcessNamespaces (assembly, iterator.Current.SelectChildren ("namespace", _ns));
 			}
-			Tracer.Pop ();
 		}
 
 		void ProcessNamespaces (AssemblyDefinition assembly, XPathNodeIterator iterator)
@@ -140,18 +135,14 @@ namespace Mono.Linker.Steps {
 
 		void MarkAndPreserveAll (TypeDefinition type)
 		{
-			Annotations.MarkAndPush (type);
+			Annotations.Mark (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 			Annotations.SetPreserve (type, TypePreserve.All);
 
-			if (!type.HasNestedTypes) {
-				Tracer.Pop ();
+			if (!type.HasNestedTypes)
 				return;
-			}
 
 			foreach (TypeDefinition nested in type.NestedTypes)
 				MarkAndPreserveAll (nested);
-
-			Tracer.Pop ();
 		}
 
 		void ProcessTypes (AssemblyDefinition assembly, XPathNodeIterator iterator)
@@ -172,10 +163,8 @@ namespace Mono.Linker.Steps {
 					if (assembly.MainModule.HasExportedTypes) {
 						foreach (var exported in assembly.MainModule.ExportedTypes) {
 							if (fullname == exported.FullName) {
-								Tracer.Push (exported);
-								MarkingHelpers.MarkExportedType (exported, assembly.MainModule);
+								MarkingHelpers.MarkExportedType (exported, assembly.MainModule, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 								var resolvedExternal = exported.Resolve ();
-								Tracer.Pop ();
 								if (resolvedExternal != null) {
 									type = resolvedExternal;
 									break;
@@ -217,7 +206,7 @@ namespace Mono.Linker.Steps {
 		void MatchExportedType (ExportedType exportedType, ModuleDefinition module, Regex regex, XPathNavigator nav)
 		{
 			if (regex.Match (exportedType.FullName).Success) {
-				MarkingHelpers.MarkExportedType (exportedType, module);
+				MarkingHelpers.MarkExportedType (exportedType, module, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 				TypeDefinition type = exportedType.Resolve ();
 				if (type != null) {
 					ProcessType (type, nav);
@@ -247,11 +236,14 @@ namespace Mono.Linker.Steps {
 				return;
 			
 			TypePreserve preserve = GetTypePreserve (nav);
-
-			if (!IsRequired (nav)) {
+			if (preserve != TypePreserve.Nothing)
 				Annotations.SetPreserve (type, preserve);
+
+			bool required = IsRequired (nav);
+			MarkChildren (type, nav, required);
+
+			if (!required)
 				return;
-			}
 
 			if (Annotations.IsMarked (type)) { 
 				var existingLevel = Annotations.TryGetPreserve (type, out TypePreserve existingPreserve) ? existingPreserve : TypePreserve.Nothing; 
@@ -259,27 +251,16 @@ namespace Mono.Linker.Steps {
 				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {type.FullName} ({existingLevel}).  Duplicate uses ({duplicateLevel})"); 
 			} 
 
-			Annotations.MarkAndPush (type);
-			Tracer.AddDirectDependency (this, type);
+			Annotations.Mark (type, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 
 			if (type.IsNested) {
-				var parent = type;
-				while (parent.IsNested) {
-					parent = parent.DeclaringType;
-					Annotations.Mark (parent);
+				var currentType = type;
+				while (currentType.IsNested) {
+					var parent = currentType.DeclaringType;
+					Context.Annotations.Mark (parent, new DependencyInfo (DependencyKind.DeclaringType, currentType));
+					currentType = parent;
 				}
 			}
-
-			if (preserve != TypePreserve.Nothing)
-				Annotations.SetPreserve (type, preserve);
-
-			if (nav.HasChildren) {
-				MarkSelectedFields (nav, type);
-				MarkSelectedMethods (nav, type);
-				MarkSelectedEvents (nav, type);
-				MarkSelectedProperties (nav, type);
-			}
-			Tracer.Pop ();
 		}
 
 		void MarkSelectedFields (XPathNavigator nav, TypeDefinition type)
@@ -291,31 +272,41 @@ namespace Mono.Linker.Steps {
 			ProcessFields (type, fields);
 		}
 
-		void MarkSelectedMethods (XPathNavigator nav, TypeDefinition type)
+		void MarkChildren (TypeDefinition type, XPathNavigator nav, bool required)
+		{
+			if (nav.HasChildren) {
+				MarkSelectedFields (nav, type);
+				MarkSelectedMethods (nav, type, required);
+				MarkSelectedEvents (nav, type, required);
+				MarkSelectedProperties (nav, type, required);
+			}
+		}
+
+		void MarkSelectedMethods (XPathNavigator nav, TypeDefinition type, bool required)
 		{
 			XPathNodeIterator methods = nav.SelectChildren ("method", _ns);
 			if (methods.Count == 0)
 				return;
 
-			ProcessMethods (type, methods);
+			ProcessMethods (type, methods, required);
 		}
 
-		void MarkSelectedEvents (XPathNavigator nav, TypeDefinition type)
+		void MarkSelectedEvents (XPathNavigator nav, TypeDefinition type, bool required)
 		{
 			XPathNodeIterator events = nav.SelectChildren ("event", _ns);
 			if (events.Count == 0)
 				return;
 
-			ProcessEvents (type, events);
+			ProcessEvents (type, events, required);
 		}
 
-		void MarkSelectedProperties (XPathNavigator nav, TypeDefinition type)
+		void MarkSelectedProperties (XPathNavigator nav, TypeDefinition type, bool required)
 		{
 			XPathNodeIterator properties = nav.SelectChildren ("property", _ns);
 			if (properties.Count == 0)
 				return;
 
-			ProcessProperties (type, properties);
+			ProcessProperties (type, properties, required);
 		}
 
 		static TypePreserve GetTypePreserve (XPathNavigator nav)
@@ -324,8 +315,7 @@ namespace Mono.Linker.Steps {
 			if (string.IsNullOrEmpty (attribute))
 				return nav.HasChildren ? TypePreserve.Nothing : TypePreserve.All;
 
-			TypePreserve result;
-			if (Enum.TryParse (attribute, true, out result))
+			if (Enum.TryParse (attribute, true, out TypePreserve result))
 				return result;
 			return TypePreserve.Nothing;
 		}
@@ -353,19 +343,20 @@ namespace Mono.Linker.Steps {
 		void ProcessFieldSignature (TypeDefinition type, string signature)
 		{
 			FieldDefinition field = GetField (type, signature);
-			MarkField (type, field, signature);
+			if (field == null) {
+				AddUnresolveMarker (string.Format ("T: {0}; F: {1}", type, signature));
+				return;
+			}
+
+			MarkField (type, field);
 		}
 
-		void MarkField (TypeDefinition type, FieldDefinition field, string signature)
+		void MarkField (TypeDefinition type, FieldDefinition field)
 		{
-			if (field != null) {
-				if (Annotations.IsMarked (field))
-					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {field.FullName}");
+			if (Annotations.IsMarked (field))
+				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {field.FullName}");
 				
-				Annotations.Mark (field);
-			} else {
-				AddUnresolveMarker (string.Format ("T: {0}; F: {1}", type, signature));
-			}
+			Context.Annotations.Mark (field, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 		}
 
 		void ProcessFieldName (TypeDefinition type, string name)
@@ -375,7 +366,7 @@ namespace Mono.Linker.Steps {
 
 			foreach (FieldDefinition field in type.Fields)
 				if (field.Name == name)
-					MarkField (type, field, name);
+					MarkField (type, field);
 		}
 
 		protected static FieldDefinition GetField (TypeDefinition type, string signature)
@@ -395,85 +386,89 @@ namespace Mono.Linker.Steps {
 			return field.FieldType.FullName + " " + field.Name;
 		}
 
-		void ProcessMethods (TypeDefinition type, XPathNodeIterator iterator)
+		void ProcessMethods (TypeDefinition type, XPathNodeIterator iterator, bool required)
 		{
 			while (iterator.MoveNext ())
-				ProcessMethod (type, iterator);
+				ProcessMethod (type, iterator, required);
 		}
 
-		protected virtual void ProcessMethod (TypeDefinition type, XPathNodeIterator iterator)
+		protected virtual void ProcessMethod (TypeDefinition type, XPathNodeIterator iterator, bool required)
 		{
 			if (IsExcluded (iterator.Current))
 				return;
 			
 			string value = GetSignature (iterator.Current);
 			if (!String.IsNullOrEmpty (value))
-				ProcessMethodSignature (type, value);
+				ProcessMethodSignature (type, value, required);
 
 			value = GetAttribute (iterator.Current, "name");
 			if (!String.IsNullOrEmpty (value))
-				ProcessMethodName (type, value);
+				ProcessMethodName (type, value, required);
 		}
 
-		void ProcessMethodSignature (TypeDefinition type, string signature)
+		void ProcessMethodSignature (TypeDefinition type, string signature, bool required)
 		{
 			MethodDefinition meth = GetMethod (type, signature);
-			MarkMethod (type, meth, signature);
-		}
-
-		void MarkMethod (TypeDefinition type, MethodDefinition method, string signature)
-		{
-			if (method != null) {
-				MarkMethod (method);
-			} else
+			if (meth == null) {
 				AddUnresolveMarker (string.Format ("T: {0}; M: {1}", type, signature));
+				return;
+			}
+
+			MarkMethod (type, meth, required);
 		}
 
-		void MarkMethod (MethodDefinition method)
+		void MarkMethod (TypeDefinition type, MethodDefinition method, bool required)
 		{
 			if (Annotations.IsMarked (method)) 
-				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {method.FullName}"); 
+				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {method.FullName}");
 
-			Annotations.Mark (method);
+			Annotations.Mark (method, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
 			Annotations.MarkIndirectlyCalledMethod (method);
-			Tracer.AddDirectDependency (this, method);
 			Annotations.SetAction (method, MethodAction.Parse);
+
+			if (!required)
+				Annotations.AddPreservedMethod (type, method);
 		}
 
-		void MarkMethodIfNotNull (MethodDefinition method)
+		void MarkMethodIfNotNull (TypeDefinition type, MethodDefinition method, bool required)
 		{
 			if (method == null)
 				return;
 
-			MarkMethod (method);
+			MarkMethod (type, method, required);
 		}
 
-		void ProcessMethodName (TypeDefinition type, string name)
+		void ProcessMethodName (TypeDefinition type, string name, bool required)
 		{
 			if (!type.HasMethods)
 				return;
 
 			foreach (MethodDefinition method in type.Methods)
 				if (name == method.Name)
-					MarkMethod (type, method, name);
+					MarkMethod (type, method, required);
 		}
 
 		protected static MethodDefinition GetMethod (TypeDefinition type, string signature)
 		{
 			if (type.HasMethods)
 				foreach (MethodDefinition meth in type.Methods)
-					if (signature == GetMethodSignature (meth))
+					if (signature == GetMethodSignature (meth, false))
 						return meth;
 
 			return null;
 		}
 
-		static string GetMethodSignature (MethodDefinition meth)
+		public static string GetMethodSignature (MethodDefinition meth, bool includeGenericParameters)
 		{
 			StringBuilder sb = new StringBuilder ();
 			sb.Append (meth.ReturnType.FullName);
 			sb.Append (" ");
 			sb.Append (meth.Name);
+			if (includeGenericParameters && meth.HasGenericParameters) {
+				sb.Append ("`");
+				sb.Append (meth.GenericParameters.Count);
+			}
+
 			sb.Append ("(");
 			if (meth.HasParameters) {
 				for (int i = 0; i < meth.Parameters.Count; i++) {
@@ -487,55 +482,57 @@ namespace Mono.Linker.Steps {
 			return sb.ToString ();
 		}
 
-		void ProcessEvents (TypeDefinition type, XPathNodeIterator iterator)
+		void ProcessEvents (TypeDefinition type, XPathNodeIterator iterator, bool required)
 		{
 			while (iterator.MoveNext ())
-				ProcessEvent (type, iterator);
+				ProcessEvent (type, iterator, required);
 		}
 
-		protected virtual void ProcessEvent (TypeDefinition type, XPathNodeIterator iterator)
+		protected virtual void ProcessEvent (TypeDefinition type, XPathNodeIterator iterator, bool required)
 		{
 			if (IsExcluded (iterator.Current))
 				return;
 			
 			string value = GetSignature (iterator.Current);
 			if (!String.IsNullOrEmpty (value))
-				ProcessEventSignature (type, value);
+				ProcessEventSignature (type, value, required);
 
 			value = GetAttribute (iterator.Current, "name");
 			if (!String.IsNullOrEmpty (value))
-				ProcessEventName (type, value);
+				ProcessEventName (type, value, required);
 		}
 
-		void ProcessEventSignature (TypeDefinition type, string signature)
+		void ProcessEventSignature (TypeDefinition type, string signature, bool required)
 		{
 			EventDefinition @event = GetEvent (type, signature);
-			MarkEvent (type, @event, signature);
-		}
-
-		void MarkEvent (TypeDefinition type, EventDefinition @event, string signature)
-		{
-			if (@event != null) {
-				if (Annotations.IsMarked (@event))
-					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {@event.FullName}");
-
-				Annotations.Mark (@event);
-
-				MarkMethod (@event.AddMethod);
-				MarkMethod (@event.RemoveMethod);
-				MarkMethodIfNotNull (@event.InvokeMethod);
-			} else
+			if (@event == null) {
 				AddUnresolveMarker (string.Format ("T: {0}; E: {1}", type, signature));
+				return;
+			}
+
+			MarkEvent (type, @event, required);
 		}
 
-		void ProcessEventName (TypeDefinition type, string name)
+		void MarkEvent (TypeDefinition type, EventDefinition @event, bool required)
+		{
+			if (Annotations.IsMarked (@event))
+				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {@event.FullName}");
+
+			Annotations.Mark (@event, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
+
+			MarkMethod (type, @event.AddMethod, required);
+			MarkMethod (type, @event.RemoveMethod, required);
+			MarkMethodIfNotNull (type, @event.InvokeMethod, required);
+		}
+
+		void ProcessEventName (TypeDefinition type, string name, bool required)
 		{
 			if (!type.HasEvents)
 				return;
 
 			foreach (EventDefinition @event in type.Events)
 				if (@event.Name == name)
-					MarkEvent (type, @event, name);
+					MarkEvent (type, @event, required);
 		}
 
 		protected static EventDefinition GetEvent (TypeDefinition type, string signature)
@@ -555,74 +552,74 @@ namespace Mono.Linker.Steps {
 			return @event.EventType.FullName + " " + @event.Name;
 		}
 
-		void ProcessProperties (TypeDefinition type, XPathNodeIterator iterator)
+		void ProcessProperties (TypeDefinition type, XPathNodeIterator iterator, bool required)
 		{
 			while (iterator.MoveNext ())
-				ProcessProperty (type, iterator);
+				ProcessProperty (type, iterator, required);
 		}
 
-		protected virtual void ProcessProperty (TypeDefinition type, XPathNodeIterator iterator)
+		protected virtual void ProcessProperty (TypeDefinition type, XPathNodeIterator iterator, bool required)
 		{
 			if (IsExcluded (iterator.Current))
 				return;
 			
 			string value = GetSignature (iterator.Current);
 			if (!String.IsNullOrEmpty (value))
-				ProcessPropertySignature (type, value, GetAccessors (iterator.Current));
+				ProcessPropertySignature (type, value, GetAccessors (iterator.Current), required);
 
 			value = GetAttribute (iterator.Current, "name");
 			if (!String.IsNullOrEmpty (value))
-				ProcessPropertyName (type, value, _accessorsAll);
+				ProcessPropertyName (type, value, _accessorsAll, required);
 		}
 
-		void ProcessPropertySignature (TypeDefinition type, string signature, string[] accessors)
+		void ProcessPropertySignature (TypeDefinition type, string signature, string[] accessors, bool required)
 		{
 			PropertyDefinition property = GetProperty (type, signature);
-			MarkProperty (type, property, signature, accessors);
-		}
-
-		void MarkProperty (TypeDefinition type, PropertyDefinition property, string signature, string[] accessors)
-		{
-			if (property != null) {
-				if (Annotations.IsMarked (property))
-					Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {property.FullName}");
-				
-				Annotations.Mark (property);
-
-				MarkPropertyAccessors (type, property, accessors);
-			} else
+			if (property == null) {
 				AddUnresolveMarker (string.Format ("T: {0}; P: {1}", type, signature));
-		}
-
-		void MarkPropertyAccessors (TypeDefinition type, PropertyDefinition property, string[] accessors)
-		{
-			if (Array.IndexOf (accessors, "all") >= 0) {
-				MarkMethodIfNotNull (property.GetMethod);
-				MarkMethodIfNotNull (property.SetMethod);
-
 				return;
 			}
-			if (property.GetMethod != null 
-					&& Array.IndexOf (accessors, "get") >= 0)
-				MarkMethod (property.GetMethod);
+
+			MarkProperty (type, property, accessors, required);
+		}
+
+		void MarkProperty (TypeDefinition type, PropertyDefinition property, string[] accessors, bool required)
+		{
+			if (Annotations.IsMarked (property))
+				Context.LogMessage ($"Duplicate preserve in {_xmlDocumentLocation} of {property.FullName}");
+				
+			Annotations.Mark (property, new DependencyInfo (DependencyKind.XmlDescriptor, _xmlDocumentLocation));
+
+			MarkPropertyAccessors (type, property, accessors, required);
+		}
+
+		void MarkPropertyAccessors (TypeDefinition type, PropertyDefinition property, string[] accessors, bool required)
+		{
+			if (Array.IndexOf (accessors, "all") >= 0) {
+				MarkMethodIfNotNull (type, property.GetMethod, required);
+				MarkMethodIfNotNull (type, property.SetMethod, required);
+				return;
+			}
+
+			if (property.GetMethod != null && Array.IndexOf (accessors, "get") >= 0)
+				MarkMethod (type, property.GetMethod, required);
 			else if (property.GetMethod == null)
 				AddUnresolveMarker (string.Format ("T: {0}' M: {1} get_{2}", type, property.PropertyType, property.Name));
 			
-			if (property.SetMethod != null 
-					&& Array.IndexOf (accessors, "set") >= 0)
-				MarkMethod (property.SetMethod);
+			if (property.SetMethod != null && Array.IndexOf (accessors, "set") >= 0)
+				MarkMethod (type, property.SetMethod, required);
 			else if (property.SetMethod == null)
 				AddUnresolveMarker (string.Format ("T: {0}' M: System.Void set_{2} ({1})", type, property.PropertyType, property.Name));
 		}
 
-		void ProcessPropertyName (TypeDefinition type, string name, string[] accessors)
+		void ProcessPropertyName (TypeDefinition type, string name, string[] accessors, bool required)
 		{
 			if (!type.HasProperties)
 				return;
 
 			foreach (PropertyDefinition property in type.Properties)
 				if (property.Name == name)
-					MarkProperty (type, property, name, accessors);
+					MarkProperty (type, property, accessors, required);
 		}
 
 		protected static PropertyDefinition GetProperty (TypeDefinition type, string signature)
@@ -665,10 +662,7 @@ namespace Mono.Linker.Steps {
 			if (attribute == null || attribute.Length == 0)
 				return true;
 
-			bool result;
-			if (bool.TryParse (attribute, out result))
-				return result;
-			return false;
+			return bool.TryParse (attribute, out bool result) && result;
 		}
 
 		protected static string GetSignature (XPathNavigator nav)

@@ -30,7 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-
+using System.Runtime.Serialization.Json;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.PE;
@@ -48,7 +48,7 @@ namespace Mono.Linker.Steps {
 			Default = 0
 		}
 
-		List<string> assembliesWritten;
+		readonly List<string> assembliesWritten;
 
 		public OutputStep () {
 			assembliesWritten = new List<string> ();
@@ -67,8 +67,7 @@ namespace Mono.Linker.Steps {
 				}
 			}
 
-			TargetArchitecture pureILArch;
-			if (architectureMap.TryGetValue ((ushort) readyToRunArch, out pureILArch)) {
+			if (architectureMap.TryGetValue ((ushort) readyToRunArch, out TargetArchitecture pureILArch)) {
 				return pureILArch;
 			}
 			throw new BadImageFormatException ("unrecognized module attributes");
@@ -77,6 +76,7 @@ namespace Mono.Linker.Steps {
 		protected override void Process ()
 		{
 			CheckOutputDirectory ();
+			OutputPInvokes ();
 			Tracer.Finish ();
 		}
 
@@ -139,13 +139,11 @@ namespace Mono.Linker.Steps {
 			case AssemblyAction.Save:
 			case AssemblyAction.Link:
 			case AssemblyAction.AddBypassNGen:
-				Context.Tracer.AddDependency (assembly);
 				WriteAssembly (assembly, directory);
 				CopySatelliteAssembliesIfNeeded (assembly, directory);
 				assembliesWritten.Add (GetOriginalAssemblyFileInfo (assembly).Name);
 				break;
 			case AssemblyAction.Copy:
-				Context.Tracer.AddDependency (assembly);
 				CloseSymbols (assembly);
 				CopyAssembly (assembly, directory);
 				CopySatelliteAssembliesIfNeeded (assembly, directory);
@@ -158,6 +156,19 @@ namespace Mono.Linker.Steps {
 			default:
 				CloseSymbols (assembly);
 				break;
+			}
+		}
+
+		private void OutputPInvokes ()
+		{
+			if (Context.PInvokesListFile == null)
+				return;
+			
+			using (var fs = File.Open (Path.Combine (Context.OutputDirectory, Context.PInvokesListFile), FileMode.Create)) {
+				Context.PInvokes.Distinct ();
+				Context.PInvokes.Sort ();
+				var jsonSerializer = new DataContractJsonSerializer (typeof (List<PInvokeInfo>));
+				jsonSerializer.WriteObject (fs, Context.PInvokes);
 			}
 		}
 
