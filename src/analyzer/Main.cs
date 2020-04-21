@@ -28,6 +28,7 @@ namespace LinkerAnalyzer
 			bool reduceToTree = false;
 			bool verbose = false;
 			bool flatDeps = false;
+			bool log = false;
 			string linkedPath = null;
 			string sizeJsonFileName = null;
 			string depJsonFileName = null;
@@ -45,6 +46,7 @@ namespace LinkerAnalyzer
 				{ "f|flat", "show all dependencies per vertex and their distance", v => flatDeps = v != null },
 				{ "json=", "write sizes to the specified json file. Works only if linkedpath is also specified.", v => { sizeJsonFileName = v; } },
 				{ "d|outjson=", "write dependencies and sizes to the specified directory. Works only if linkedpath is also specified.", v => { depJsonFileName = v; } },
+				{ "log", "log all dependencies from analyzer", v => log = v != null},
 				{ "v|verbose", "be more verbose. Enables stat and roots options.", v => verbose = v != null },
 			};
 
@@ -93,7 +95,7 @@ namespace LinkerAnalyzer
 			if (showTypeDeps)
 				deps.ShowTypeDependencies (typeName);
 			if (showAllDeps) 
-				deps.ShowAllDependencies ();
+				deps.ShowAllDependencies (log);
 			else if (showTypes)
 				deps.ShowTypesDependencies ();
 		}

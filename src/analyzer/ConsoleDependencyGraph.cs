@@ -75,7 +75,7 @@ namespace LinkerAnalyzer
 				"" : string.Format (" size: {0}", SpaceAnalyzer.GetSize (vertex));
 		}
 
-		public void ShowDependencies (VertexData vertex, bool useSize = false)
+		public void ShowDependencies (VertexData vertex, bool useSize = false, bool log = false)
 		{
 			if (FlatDeps) {
 				ShowFlatDependencies (vertex);
@@ -83,28 +83,33 @@ namespace LinkerAnalyzer
 				return;
 			}
 
-			Header ("{0} dependencies", vertex.value);
+			
+			GetDependencyArray (vertex);
 
-			if (vertex.parentIndexes == null) {
-				Console.WriteLine ("Root dependency");
-			} else {
-				int i = 0;	
-				GetDependencyArray (vertex);			
-				foreach (int index in vertex.parentIndexes) {
-					Console.WriteLine ("Dependency #{0}", ++i);
-					Console.WriteLine ($"\t{vertex.value}{SizeString (vertex)}");
-					var childVertex = Vertex (index);
-					Console.WriteLine ("\t| {0}{1}", childVertex.value, childVertex.DepsCount);
-
-					while (childVertex.parentIndexes != null) {
-						childVertex = Vertex (childVertex.parentIndexes [0]);
+			if (log) {
+				Header ("{0} dependencies", vertex.value);
+				
+				if (vertex.parentIndexes == null) {
+					Console.WriteLine ("Root dependency");
+				} else {
+					int i = 0;	
+					foreach (int index in vertex.parentIndexes) {
+						Console.WriteLine ("Dependency #{0}", ++i);
+						Console.WriteLine ($"\t{vertex.value}{SizeString (vertex)}");
+						var childVertex = Vertex (index);
 						Console.WriteLine ("\t| {0}{1}", childVertex.value, childVertex.DepsCount);
+
+						while (childVertex.parentIndexes != null) {
+							childVertex = Vertex (childVertex.parentIndexes [0]);
+							Console.WriteLine ("\t| {0}{1}", childVertex.value, childVertex.DepsCount);
+						}
+						if (Tree)
+							break;
 					}
-					if (Tree)
-						break;
+									
 				}
-								
 			}
+			
 			
 		}
 
@@ -113,14 +118,12 @@ namespace LinkerAnalyzer
 			depJsonWriter?.WriteStartObject ();
 			depJsonWriter?.WriteString ("name", vertex.value);
 			depJsonWriter?.WriteNumber ("size", SpaceAnalyzer.GetSize (vertex));
-			if (vertex.parentIndexes != null) {
-				depJsonWriter?.WritePropertyName ("dependencies");
-				JsonSerializer.Serialize (depJsonWriter, vertex.parentIndexes);
-			}
+			depJsonWriter?.WritePropertyName ("dependencies");
+			JsonSerializer.Serialize (depJsonWriter, vertex.parentIndexes);
 			depJsonWriter?.WriteEndObject ();
 		}
 
-		public void ShowAllDependencies ()
+		public void ShowAllDependencies (bool log = false)
 		{
 			depJsonWriter = null;
 
@@ -134,7 +137,7 @@ namespace LinkerAnalyzer
 				depJsonWriter?.WriteStartArray ();
 
 				foreach (var vertex in vertices)
-					ShowDependencies (vertex);
+					ShowDependencies (vertex, log = log);
 
 				depJsonWriter?.WriteEndArray ();
 			}

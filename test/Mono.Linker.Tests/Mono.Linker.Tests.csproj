@@ -2,6 +2,7 @@
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
   <PropertyGroup>
+    <Configurations>Debug;Release</Configurations>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
@@ -50,6 +51,7 @@
          and targets from the restored package. -->
     <PropertyGroup>
       <IlasmProject>$(MSBuildThisFileDirectory)../../eng/ilasm.ilproj</IlasmProject>
+      <IlasmDir>$(ArtifactsDir)tools</IlasmDir>
     </PropertyGroup>
 
     <MSBuild Projects="$(IlasmProject)" Targets="Restore" />
@@ -60,13 +62,6 @@
     <ProjectReference Condition="'$(UseCecilPackage)' != 'true'" Include="..\..\external\cecil\symbols\mdb\Mono.Cecil.Mdb.csproj" />
     <PackageReference Include="NUnit" Version="3.10.0" />
     <PackageReference Include="NUnit.ConsoleRunner" Version="3.10.0" />
-    <PackageReference Include="NUnit3TestAdapter" Version="3.10.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="TestCases\Dependencies\PInvokesExpectations.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
   <Target Name="RunTestsOnMono" Condition="'$(MonoBuild)' != ''">
