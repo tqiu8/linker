@@ -137,7 +137,7 @@ namespace LinkerAnalyzer
 				depJsonWriter?.WriteStartArray ();
 
 				foreach (var vertex in vertices)
-					ShowDependencies (vertex, log = log);
+					ShowDependencies (vertex, log);
 
 				depJsonWriter?.WriteEndArray ();
 			}
