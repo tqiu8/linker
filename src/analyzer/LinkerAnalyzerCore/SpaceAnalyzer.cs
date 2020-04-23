@@ -176,11 +176,24 @@ namespace LinkerAnalyzer.Core
 					sizeJsonWriter?.WriteStartObject ();
 					sizeJsonWriter?.WriteString ("type", "assembly");
 					sizeJsonWriter?.WriteString ("name", assembly.Name.Name);
-
+ 
 					sizeJsonWriter?.WritePropertyName ("children");
 					sizeJsonWriter?.WriteStartArray ();
 					int assemblySize = 0;
 					foreach (var module in assembly.Modules) {
+						foreach (var resource in module.Resources) {
+							if (resource.ResourceType == ResourceType.Embedded) {
+								sizeJsonWriter?.WriteStartObject ();
+								sizeJsonWriter?.WriteString("type", "resource");
+								var res = resource as EmbeddedResource;
+								Console.WriteLine(res.Name);
+								sizeJsonWriter?.WriteString ("name", res.Name);
+								sizeJsonWriter?.WriteNumber ("size", res.GetResourceData().Length);
+								sizeJsonWriter?.WriteEndObject ();
+							}
+						}
+						
+
 						foreach (var type in module.Types) {
 							assemblySize += ProcessType (type);
 							foreach (var child in type.NestedTypes)
